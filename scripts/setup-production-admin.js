@@ -27,7 +27,8 @@ async function setupProductionAdmin() {
     console.log("   - INITIAL_ADMIN_EMAIL");
     console.log("   - INITIAL_ADMIN_PASSWORD");
     console.log("   Configura estas variables en Railway y redespliega");
-    process.exit(0);
+    console.log("   Continuando sin crear admin...");
+    return; // No salir, solo continuar
   }
 
   try {
@@ -63,7 +64,8 @@ async function setupProductionAdmin() {
 
   } catch (error) {
     console.error("❌ Error al crear administrador:", error.message);
-    process.exit(1);
+    console.log("⚠️  Continuando sin crear admin...");
+    // No salir, solo continuar
   } finally {
     await prisma.$disconnect();
   }

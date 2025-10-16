@@ -21,6 +21,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:create-initial-admin": "tsx scripts/create-initial-admin.ts",
     "db:setup-production-admin": "node scripts/setup-production-admin.js",
+    "db:test-migrations": "node scripts/test-migrations.js",
     "db:studio": "prisma studio",
     "docker:dev": "chmod +x scripts/docker-dev.sh && ./scripts/docker-dev.sh",
     "docker:start": "docker-compose up -d postgres",
