@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "chmod +x scripts/railway-init.sh && ./scripts/railway-init.sh && node server.js",
+    "startCommand": "sh -c 'echo \"🚀 Iniciando Railway...\" && export DATABASE_URL=\"$DATABASE_PUBLIC_URL\" && (npx prisma migrate deploy || npx prisma db push) && echo \"✅ Migraciones completadas\" && pnpm run db:setup-production-admin && echo \"✅ Admin configurado\" && node server.js'",
     "healthcheckPath": "/api/health/liveness",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",

@@ -22,7 +22,8 @@ const publicRoutes = [
   '/',
   '/auth/signin',
   '/api/auth',
-  '/api/health'
+  '/api/health',
+  '/api/health/liveness'
 ]
 
 export async function middleware(request: NextRequest) {

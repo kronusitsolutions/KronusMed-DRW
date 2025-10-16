@@ -26,6 +26,7 @@
     "db:create-tables": "node scripts/create-tables-directly.js",
     "db:create-enums": "node scripts/create-enums.js",
     "db:create-admin": "node scripts/create-admin.js",
+    "test:healthcheck": "node scripts/test-healthcheck.js",
     "db:studio": "prisma studio",
     "docker:dev": "chmod +x scripts/docker-dev.sh && ./scripts/docker-dev.sh",
     "docker:start": "docker-compose up -d postgres",
