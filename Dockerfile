@@ -53,8 +53,9 @@ RUN pnpm install --prod
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Copiar archivos de Prisma
+# Copiar archivos de Prisma y scripts
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/scripts ./scripts
 
 # Generar Prisma Client en la imagen final (evita depender de rutas de node_modules del build)
 RUN pnpm prisma generate

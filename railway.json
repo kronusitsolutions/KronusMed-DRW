@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "sh -c \"pnpm prisma migrate deploy || pnpm prisma db push; node server.js\"",
+    "startCommand": "chmod +x scripts/railway-init.sh && ./scripts/railway-init.sh && node server.js",
     "healthcheckPath": "/api/health/liveness",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
