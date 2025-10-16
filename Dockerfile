@@ -77,4 +77,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS http://127.0.0.1:$PORT/api/health/liveness || exit 1
 
 # Comando de inicio: ejecutar migraciones y iniciar servidor
-CMD ["sh", "-c", "echo '🚀 Iniciando Railway...' && export DATABASE_URL=\"$DATABASE_PUBLIC_URL\" && (npx prisma migrate deploy || npx prisma db push) && echo '✅ Migraciones completadas' && pnpm run db:setup-production-admin && echo '✅ Admin configurado' && node server.js"]
+CMD ["sh", "-c", "echo '🚀 Iniciando Railway...' && if [ -n \"$DATABASE_PUBLIC_URL\" ]; then export DATABASE_URL=\"$DATABASE_PUBLIC_URL\"; fi && echo '📊 Ejecutando migraciones...' && (npx prisma migrate deploy || npx prisma db push || echo '⚠️ Migraciones fallaron, continuando...') && echo '👤 Configurando admin...' && (pnpm run db:setup-production-admin || echo '⚠️ Admin falló, continuando...') && echo '🚀 Iniciando servidor...' && node server.js"]

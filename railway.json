@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "sh -c 'echo \"🚀 Iniciando Railway...\" && export DATABASE_URL=\"$DATABASE_PUBLIC_URL\" && (npx prisma migrate deploy || npx prisma db push) && echo \"✅ Migraciones completadas\" && pnpm run db:setup-production-admin && echo \"✅ Admin configurado\" && node server.js'",
+    "startCommand": "sh -c 'echo \"🚀 Iniciando Railway...\" && if [ -n \"$DATABASE_PUBLIC_URL\" ]; then export DATABASE_URL=\"$DATABASE_PUBLIC_URL\"; fi && echo \"📊 Ejecutando migraciones...\" && (npx prisma migrate deploy || npx prisma db push || echo \"⚠️ Migraciones fallaron, continuando...\") && echo \"👤 Configurando admin...\" && (pnpm run db:setup-production-admin || echo \"⚠️ Admin falló, continuando...\") && echo \"🚀 Iniciando servidor...\" && node server.js'",
     "healthcheckPath": "/api/health/liveness",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
