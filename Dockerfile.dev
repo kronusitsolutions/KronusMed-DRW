@@ -1,0 +1,35 @@
+# Dockerfile para desarrollo
+# Usa Node.js 22 para compatibilidad
+
+FROM node:22-alpine
+
+# Instalar dependencias del sistema
+RUN apk add --no-cache libc6-compat
+
+# Establecer directorio de trabajo
+WORKDIR /app
+
+# Copiar archivos de dependencias
+COPY package*.json ./
+
+# Instalar pnpm
+RUN npm install -g pnpm
+
+# Instalar dependencias
+RUN pnpm install
+
+# Copiar código fuente
+COPY . .
+
+# Generar cliente de Prisma
+RUN pnpm run db:generate
+
+# Exponer puerto
+EXPOSE 3000
+
+# Variables de entorno para desarrollo
+ENV NODE_ENV=development
+ENV PORT=3000
+
+# Comando de inicio para desarrollo
+CMD ["pnpm", "run", "dev"]

@@ -1,0 +1,1241 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { 
+  Plus, 
+  Calendar, 
+  Clock, 
+  User, 
+  Search, 
+  Edit, 
+  Trash2, 
+  Eye, 
+  CalendarCheck, 
+  UserCheck, 
+  AlertCircle, 
+  CheckCircle, 
+  XCircle, 
+  Loader2, 
+  X,
+  Filter,
+  RefreshCw
+} from 'lucide-react'
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { toast } from "sonner"
+import { extractAppointmentsFromResponse } from "@/lib/api-utils"
+
+// Esquemas de validación
+const appointmentSchema = z.object({
+  patientId: z.string().min(1, "El paciente es requerido"),
+  doctorId: z.string().optional(),
+  doctorProfileId: z.string().optional(),
+  serviceId: z.string().optional().or(z.literal("")).or(z.literal("none")),
+  date: z.string().min(1, "La fecha es requerida"),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
+  reason: z.string().min(1, "El motivo de la cita es requerido"),
+  notes: z.string().optional(),
+  status: z.enum(["SCHEDULED", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW"]).default("SCHEDULED")
+}).refine(data => data.doctorId || data.doctorProfileId, {
+  message: "Debe seleccionar un doctor",
+  path: ["doctorId"]
+})
+
+const statusSchema = z.object({
+  status: z.enum(["SCHEDULED", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "NO_SHOW"])
+})
+
+type AppointmentForm = z.infer<typeof appointmentSchema>
+type StatusForm = z.infer<typeof statusSchema>
+
+interface Appointment {
+  id: string
+  date: string
+  startTime?: string
+  endTime?: string
+  reason: string
+  notes?: string
+  status: string
+  patient: {
+    id: string
+    name: string
+    phone?: string
+    patientNumber?: string
+  }
+  doctor?: {
+    id: string
+    name: string
+  }
+  doctorProfile?: {
+    id: string
+    name: string
+    specialization?: string
+  }
+  service?: {
+    id: string
+    name: string
+    category?: string
+    price: number
+  }
+}
+
+export default function AppointmentsPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  
+  // Estados principales
+  const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [patients, setPatients] = useState<any[]>([])
+  const [doctors, setDoctors] = useState<any[]>([])
+  const [services, setServices] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  
+  // Estados de diálogos
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
+  const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false)
+  
+  // Estados de selección
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
+  const [selectedPatient, setSelectedPatient] = useState<any>(null)
+  
+  // Estados de filtros
+  const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [dateFilter, setDateFilter] = useState("")
+  
+  // Estados de búsqueda de pacientes
+  const [patientSearchTerm, setPatientSearchTerm] = useState("")
+  const [patientSearchResults, setPatientSearchResults] = useState<any[]>([])
+  const [isSearchingPatients, setIsSearchingPatients] = useState(false)
+  const [showPatientResults, setShowPatientResults] = useState(false)
+
+  // Formularios
+  const createForm = useForm<AppointmentForm>({
+    resolver: zodResolver(appointmentSchema)
+  })
+
+  const editForm = useForm<AppointmentForm>({
+    resolver: zodResolver(appointmentSchema)
+  })
+
+  const statusForm = useForm<StatusForm>({
+    resolver: zodResolver(statusSchema)
+  })
+
+  // Efectos
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/auth/signin")
+      return
+    }
+
+    if (session) {
+      fetchAppointments()
+      fetchPatients()
+      fetchDoctors()
+      fetchServices()
+    }
+  }, [session, status, router])
+
+  // Funciones de carga de datos
+  const fetchAppointments = async () => {
+    try {
+      setIsLoading(true)
+      let url = "/api/appointments"
+      const params = new URLSearchParams()
+      
+      if (dateFilter) params.append("date", dateFilter)
+      if (statusFilter && statusFilter !== "all") params.append("status", statusFilter)
+      
+      if (params.toString()) {
+        url += "?" + params.toString()
+      }
+
+      const response = await fetch(url, { cache: 'no-store' })
+      if (response.ok) {
+        const data = await response.json()
+        const appointments = extractAppointmentsFromResponse(data)
+        setAppointments(appointments)
+      } else {
+        toast.error("Error al cargar citas")
+      }
+    } catch (error) {
+      console.error("Error al cargar citas:", error)
+      toast.error("Error al cargar citas")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const fetchPatients = async () => {
+    try {
+      const response = await fetch("/api/patients")
+      if (response.ok) {
+        const data = await response.json()
+        setPatients(data.filter((p: any) => p.status === "ACTIVE"))
+      }
+    } catch (error) {
+      console.error("Error al cargar pacientes:", error)
+    }
+  }
+
+  const fetchDoctors = async () => {
+    try {
+      const response = await fetch("/api/doctors")
+      if (response.ok) {
+        const data = await response.json()
+        setDoctors(data)
+      }
+    } catch (error) {
+      console.error("Error al cargar doctores:", error)
+    }
+  }
+
+  const fetchServices = async () => {
+    try {
+      const response = await fetch("/api/services?limit=250")
+      if (response.ok) {
+        const data = await response.json()
+        const services = data.services || data
+        setServices(services.filter((s: any) => s.isActive))
+      }
+    } catch (error) {
+      console.error("Error al cargar servicios:", error)
+    }
+  }
+
+  // Búsqueda de pacientes
+  const searchPatients = async (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      setPatientSearchResults([])
+      setShowPatientResults(false)
+      return
+    }
+
+    try {
+      setIsSearchingPatients(true)
+      const response = await fetch(`/api/patients?search=${encodeURIComponent(searchTerm)}&limit=10`)
+      if (response.ok) {
+        const data = await response.json()
+        const patientsData = data.patients || data
+        setPatientSearchResults(patientsData)
+        setShowPatientResults(true)
+      }
+    } catch (error) {
+      console.error("Error al buscar pacientes:", error)
+      setPatientSearchResults([])
+    } finally {
+      setIsSearchingPatients(false)
+    }
+  }
+
+  // Debounce para búsqueda
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      searchPatients(patientSearchTerm)
+    }, 300)
+
+    return () => clearTimeout(timeoutId)
+  }, [patientSearchTerm])
+
+  // Cerrar resultados al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('.patient-search-container')) {
+        setShowPatientResults(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Funciones de manejo de pacientes
+  const handleSelectPatientFromSearch = (patient: any) => {
+    setSelectedPatient(patient)
+    createForm.setValue("patientId", patient.id)
+    setPatientSearchTerm("")
+    setShowPatientResults(false)
+  }
+
+  const handleClearPatient = () => {
+    setSelectedPatient(null)
+    createForm.setValue("patientId", "")
+    setPatientSearchTerm("")
+    setShowPatientResults(false)
+  }
+
+  // Filtros
+  const filteredAppointments = appointments.filter(appointment => {
+    const matchesSearch = searchTerm === "" || 
+      appointment.patient?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (appointment.doctorProfile?.name || appointment.doctor?.name)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      appointment.reason?.toLowerCase().includes(searchTerm.toLowerCase())
+    
+    return matchesSearch
+  })
+
+  // Funciones de formularios
+  const onSubmitCreate = async (data: AppointmentForm) => {
+    setIsLoading(true)
+    try {
+      const cleanData = {
+        ...data,
+        serviceId: data.serviceId === "" || data.serviceId === "none" ? undefined : data.serviceId
+      }
+      
+      const response = await fetch("/api/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cleanData)
+      })
+
+      if (response.ok) {
+        toast.success("Cita creada exitosamente")
+        setIsCreateDialogOpen(false)
+        createForm.reset()
+        setSelectedPatient(null)
+        fetchAppointments()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Error al crear cita")
+      }
+    } catch (error) {
+      toast.error("Error al crear cita")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const onSubmitEdit = async (data: AppointmentForm) => {
+    if (!selectedAppointment) return
+    
+    setIsLoading(true)
+    try {
+      const cleanData = {
+        ...data,
+        serviceId: data.serviceId === "" || data.serviceId === "none" ? undefined : data.serviceId
+      }
+      
+      const response = await fetch(`/api/appointments/${selectedAppointment.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cleanData)
+      })
+
+      if (response.ok) {
+        toast.success("Cita actualizada exitosamente")
+        setIsEditDialogOpen(false)
+        editForm.reset()
+        fetchAppointments()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Error al actualizar cita")
+      }
+    } catch (error) {
+      toast.error("Error al actualizar cita")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const onSubmitStatus = async (data: StatusForm) => {
+    if (!selectedAppointment) return
+    
+    setIsLoading(true)
+    try {
+      const response = await fetch(`/api/appointments/${selectedAppointment.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      })
+
+      if (response.ok) {
+        toast.success("Estado actualizado exitosamente")
+        setIsStatusDialogOpen(false)
+        statusForm.reset()
+        fetchAppointments()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Error al actualizar estado")
+      }
+    } catch (error) {
+      toast.error("Error al actualizar estado")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Funciones de manejo de acciones
+  const handleEdit = (appointment: Appointment) => {
+    setSelectedAppointment(appointment)
+    editForm.setValue("patientId", appointment.patient.id)
+    editForm.setValue("doctorId", appointment.doctor?.id || "")
+    editForm.setValue("doctorProfileId", appointment.doctorProfile?.id || "")
+    editForm.setValue("serviceId", appointment.service?.id || "none")
+    editForm.setValue("date", appointment.date.split('T')[0])
+    editForm.setValue("startTime", appointment.startTime || "")
+    editForm.setValue("endTime", appointment.endTime || "")
+    editForm.setValue("reason", appointment.reason)
+    editForm.setValue("notes", appointment.notes || "")
+    editForm.setValue("status", appointment.status as any)
+    setIsEditDialogOpen(true)
+  }
+
+  const handleView = (appointment: Appointment) => {
+    setSelectedAppointment(appointment)
+    setIsViewDialogOpen(true)
+  }
+
+  const handleDelete = async (appointmentId: string) => {
+    if (!confirm("¿Estás seguro de que quieres eliminar esta cita?")) return
+
+    try {
+      const response = await fetch(`/api/appointments/${appointmentId}`, {
+        method: "DELETE"
+      })
+
+      if (response.ok) {
+        toast.success("Cita eliminada exitosamente")
+        fetchAppointments()
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Error al eliminar cita")
+      }
+    } catch (error) {
+      toast.error("Error al eliminar cita")
+    }
+  }
+
+  const handleStatusChange = (appointment: Appointment) => {
+    setSelectedAppointment(appointment)
+    statusForm.setValue("status", appointment.status as any)
+    setIsStatusDialogOpen(true)
+  }
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    await fetchAppointments()
+    setIsRefreshing(false)
+  }
+
+  // Funciones de utilidad
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "SCHEDULED": return "bg-blue-100 text-blue-800"
+      case "CONFIRMED": return "bg-green-100 text-green-800"
+      case "IN_PROGRESS": return "bg-yellow-100 text-yellow-800"
+      case "COMPLETED": return "bg-emerald-100 text-emerald-800"
+      case "CANCELLED": return "bg-red-100 text-red-800"
+      case "NO_SHOW": return "bg-gray-100 text-gray-800"
+      default: return "bg-gray-100 text-gray-800"
+    }
+  }
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case "SCHEDULED": return "Programada"
+      case "CONFIRMED": return "Confirmada"
+      case "IN_PROGRESS": return "En Progreso"
+      case "COMPLETED": return "Completada"
+      case "CANCELLED": return "Cancelada"
+      case "NO_SHOW": return "No Asistió"
+      default: return status
+    }
+  }
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "SCHEDULED": return <Calendar className="h-4 w-4" />
+      case "CONFIRMED": return <CheckCircle className="h-4 w-4" />
+      case "IN_PROGRESS": return <Clock className="h-4 w-4" />
+      case "COMPLETED": return <CalendarCheck className="h-4 w-4" />
+      case "CANCELLED": return <XCircle className="h-4 w-4" />
+      case "NO_SHOW": return <AlertCircle className="h-4 w-4" />
+      default: return <Calendar className="h-4 w-4" />
+    }
+  }
+
+  // Estadísticas
+  const todaysAppointments = appointments.filter(apt => {
+    const today = new Date().toISOString().split('T')[0]
+    return apt.date.split('T')[0] === today
+  })
+
+  const confirmedToday = todaysAppointments.filter(apt => apt.status === "CONFIRMED")
+  const pendingToday = todaysAppointments.filter(apt => apt.status === "SCHEDULED")
+
+  if (status === "loading") {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
+
+  if (!session) {
+    return null
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Gestión de Citas</h1>
+          <p className="text-muted-foreground">
+            Programa y gestiona las citas médicas
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Actualizar
+          </Button>
+          {["ADMIN", "DOCTOR", "BILLING"].includes(session.user.role) && (
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nueva Cita
+                </Button>
+              </DialogTrigger>
+            </Dialog>
+          )}
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Citas de Hoy</CardTitle>
+            <CalendarCheck className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{todaysAppointments.length}</div>
+            <p className="text-xs text-muted-foreground">
+              {confirmedToday.length} confirmadas
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Confirmadas</CardTitle>
+            <UserCheck className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{confirmedToday.length}</div>
+            <p className="text-xs text-muted-foreground">
+              de {todaysAppointments.length} programadas
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{pendingToday.length}</div>
+            <p className="text-xs text-muted-foreground">
+              esperando confirmación
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filtros */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filtros
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <Label htmlFor="search">Buscar</Label>
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="search"
+                  placeholder="Buscar por paciente, doctor o motivo..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="status">Estado</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Todos los estados" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="SCHEDULED">Programada</SelectItem>
+                  <SelectItem value="CONFIRMED">Confirmada</SelectItem>
+                  <SelectItem value="IN_PROGRESS">En Progreso</SelectItem>
+                  <SelectItem value="COMPLETED">Completada</SelectItem>
+                  <SelectItem value="CANCELLED">Cancelada</SelectItem>
+                  <SelectItem value="NO_SHOW">No Asistió</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="date">Fecha</Label>
+              <Input
+                id="date"
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="w-40"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button 
+                onClick={fetchAppointments} 
+                variant="outline"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Aplicar"
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Tabla de Citas */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Lista de Citas</CardTitle>
+          <CardDescription>
+            Gestiona todas las citas médicas programadas
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex items-center justify-center h-32">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha & Hora</TableHead>
+                  <TableHead>Paciente</TableHead>
+                  <TableHead>Doctor</TableHead>
+                  <TableHead>Motivo</TableHead>
+                  <TableHead>Servicio</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredAppointments.map((appointment) => (
+                  <TableRow key={appointment.id}>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="font-medium">
+                          {new Date(appointment.date).toLocaleDateString('es-ES')}
+                        </div>
+                        {appointment.startTime && (
+                          <div className="text-sm text-muted-foreground">
+                            {appointment.startTime}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="font-medium">{appointment.patient?.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {appointment.patient?.phone}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {appointment.doctorProfile?.name || appointment.doctor?.name}
+                      {appointment.doctorProfile?.specialization && (
+                        <div className="text-xs text-muted-foreground">
+                          {appointment.doctorProfile.specialization}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate">
+                      {appointment.reason}
+                    </TableCell>
+                    <TableCell>
+                      {appointment.service?.name || "Sin servicio"}
+                    </TableCell>
+                    <TableCell>
+                      {["ADMIN", "DOCTOR", "BILLING"].includes(session.user.role) ? (
+                        <Button
+                          variant="ghost"
+                          className={`p-0 h-auto ${getStatusColor(appointment.status)} hover:opacity-80`}
+                          onClick={() => handleStatusChange(appointment)}
+                          title="Cambiar estado"
+                        >
+                          <Badge className={`${getStatusColor(appointment.status)} cursor-pointer`}>
+                            <div className="flex items-center gap-1">
+                              {getStatusIcon(appointment.status)}
+                              {getStatusText(appointment.status)}
+                            </div>
+                          </Badge>
+                        </Button>
+                      ) : (
+                        <Badge className={`${getStatusColor(appointment.status)}`}>
+                          <div className="flex items-center gap-1">
+                            {getStatusIcon(appointment.status)}
+                            {getStatusText(appointment.status)}
+                          </div>
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleView(appointment)}
+                          title="Ver detalles"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        {["ADMIN", "DOCTOR", "BILLING"].includes(session.user.role) && (
+                          <>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleEdit(appointment)}
+                              title="Editar cita"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleDelete(appointment.id)}
+                              title="Eliminar cita"
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {filteredAppointments.length === 0 && !isLoading && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      {searchTerm || statusFilter || dateFilter ? 
+                        'No se encontraron citas que coincidan con los filtros' : 
+                        'No hay citas registradas'}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Diálogo de Crear Cita */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Crear Nueva Cita</DialogTitle>
+            <DialogDescription>
+              Programa una nueva cita médica para un paciente.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={createForm.handleSubmit(onSubmitCreate)}>
+            <div className="grid gap-4 py-4">
+              {/* Paciente */}
+              <div className="grid grid-cols-4 items-start gap-4">
+                <Label className="text-right mt-2">Paciente</Label>
+                <div className="col-span-3 space-y-3">
+                  <Controller
+                    name="patientId"
+                    control={createForm.control}
+                    render={({ field }) => (
+                      <div className="relative patient-search-container">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Buscar paciente por nombre, teléfono o cédula..."
+                            value={patientSearchTerm}
+                            onChange={(e) => setPatientSearchTerm(e.target.value)}
+                            className="pl-10 pr-4"
+                          />
+                          {isSearchingPatients && (
+                            <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                          )}
+                        </div>
+                        
+                        {/* Resultados de búsqueda */}
+                        {showPatientResults && patientSearchResults.length > 0 && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                            {patientSearchResults.map((patient) => (
+                              <div
+                                key={patient.id}
+                                className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0 transition-colors"
+                                onClick={() => handleSelectPatientFromSearch(patient)}
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-gray-900 truncate">{patient.name}</div>
+                                    <div className="text-sm text-gray-500">
+                                      {patient.patientNumber && `#${patient.patientNumber}`}
+                                      {patient.phone && ` • ${patient.phone}`}
+                                      {patient.cedula && ` • Cédula: ${patient.cedula}`}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* Paciente seleccionado */}
+                        {selectedPatient && (
+                          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="font-medium text-sm text-blue-900">Paciente seleccionado:</div>
+                                <div className="text-sm text-blue-700">
+                                  {selectedPatient.name}
+                                  {selectedPatient.patientNumber && ` (${selectedPatient.patientNumber})`}
+                                </div>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleClearPatient}
+                                className="h-6 w-6 p-0 text-blue-600 hover:text-blue-700"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                        
+                        <input type="hidden" {...field} />
+                      </div>
+                    )}
+                  />
+                  {createForm.formState.errors.patientId && (
+                    <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.patientId.message}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Doctor */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="doctorId" className="text-right">
+                  Doctor *
+                </Label>
+                <div className="col-span-3">
+                  <Controller
+                    name="doctorId"
+                    control={createForm.control}
+                    render={({ field }) => (
+                      <Select 
+                        onValueChange={(value) => {
+                          const [type, id] = value.split(":")
+                          if (type === "user") {
+                            createForm.setValue("doctorId", id)
+                            createForm.setValue("doctorProfileId", undefined)
+                          } else {
+                            createForm.setValue("doctorProfileId", id)
+                            createForm.setValue("doctorId", undefined)
+                          }
+                          field.onChange(value)
+                        }} 
+                        value={field.value}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona un doctor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {doctors.map((doctor) => (
+                            <SelectItem 
+                              key={`${doctor.type}:${doctor.id}`} 
+                              value={`${doctor.type}:${doctor.id}`}
+                            >
+                              {doctor.name}
+                              {doctor.specialization && ` - ${doctor.specialization}`}
+                              {doctor.type === "user" && " (Con cuenta)"}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  {createForm.formState.errors.doctorId && (
+                    <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.doctorId.message}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Servicio */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="serviceId" className="text-right">
+                  Servicio
+                </Label>
+                <div className="col-span-3">
+                  <Controller
+                    name="serviceId"
+                    control={createForm.control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value || undefined}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona un servicio (opcional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sin servicio específico</SelectItem>
+                          {services.map((service) => (
+                            <SelectItem key={service.id} value={service.id}>
+                              {service.name} - ${service.price}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </div>
+              </div>
+
+              {/* Fecha */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="date" className="text-right">
+                  Fecha
+                </Label>
+                <div className="col-span-3">
+                  <Input
+                    id="date"
+                    type="date"
+                    {...createForm.register("date")}
+                    className={createForm.formState.errors.date ? "border-red-500" : ""}
+                  />
+                  {createForm.formState.errors.date && (
+                    <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.date.message}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Hora de inicio */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="startTime" className="text-right">
+                  Hora de inicio
+                </Label>
+                <div className="col-span-3">
+                  <Input
+                    id="startTime"
+                    type="time"
+                    {...createForm.register("startTime")}
+                  />
+                </div>
+              </div>
+
+              {/* Hora de fin */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="endTime" className="text-right">
+                  Hora de fin
+                </Label>
+                <div className="col-span-3">
+                  <Input
+                    id="endTime"
+                    type="time"
+                    {...createForm.register("endTime")}
+                  />
+                </div>
+              </div>
+
+              {/* Motivo */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="reason" className="text-right">
+                  Motivo
+                </Label>
+                <div className="col-span-3">
+                  <Input
+                    id="reason"
+                    placeholder="Motivo de la cita"
+                    {...createForm.register("reason")}
+                    className={createForm.formState.errors.reason ? "border-red-500" : ""}
+                  />
+                  {createForm.formState.errors.reason && (
+                    <p className="text-sm text-red-500 mt-1">{createForm.formState.errors.reason.message}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Notas */}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="notes" className="text-right">
+                  Notas
+                </Label>
+                <div className="col-span-3">
+                  <Textarea
+                    id="notes"
+                    placeholder="Notas adicionales (opcional)"
+                    {...createForm.register("notes")}
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creando...
+                  </>
+                ) : (
+                  "Crear Cita"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Cambiar Estado */}
+      <Dialog open={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Cambiar Estado de Cita</DialogTitle>
+            <DialogDescription>
+              Cambiar el estado de la cita para {selectedAppointment?.patient?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={statusForm.handleSubmit(onSubmitStatus)}>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="status" className="text-right">
+                  Estado
+                </Label>
+                <div className="col-span-3">
+                  <Controller
+                    name="status"
+                    control={statusForm.control}
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value || undefined}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona un estado" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="SCHEDULED">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4" />
+                              Programada
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="CONFIRMED">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4" />
+                              Confirmada
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="IN_PROGRESS">
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-4 w-4" />
+                              En Progreso
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="COMPLETED">
+                            <div className="flex items-center gap-2">
+                              <CalendarCheck className="h-4 w-4" />
+                              Completada
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="CANCELLED">
+                            <div className="flex items-center gap-2">
+                              <XCircle className="h-4 w-4" />
+                              Cancelada
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="NO_SHOW">
+                            <div className="flex items-center gap-2">
+                              <AlertCircle className="h-4 w-4" />
+                              No Asistió
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  {statusForm.formState.errors.status && (
+                    <p className="text-sm text-red-500 mt-1">{statusForm.formState.errors.status.message}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsStatusDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Actualizando...
+                  </>
+                ) : (
+                  "Actualizar Estado"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de Ver Detalles */}
+      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Detalles de la Cita</DialogTitle>
+            <DialogDescription>
+              Información completa de la cita médica
+            </DialogDescription>
+          </DialogHeader>
+          {selectedAppointment && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Paciente</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAppointment.patient?.name}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAppointment.patient?.phone}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Doctor</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAppointment.doctorProfile?.name || selectedAppointment.doctor?.name}
+                  </p>
+                  {selectedAppointment.doctorProfile?.specialization && (
+                    <p className="text-sm text-muted-foreground">
+                      {selectedAppointment.doctorProfile.specialization}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Fecha</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {new Date(selectedAppointment.date).toLocaleDateString('es-ES')}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Horario</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAppointment.startTime && selectedAppointment.endTime 
+                      ? `${selectedAppointment.startTime} - ${selectedAppointment.endTime}`
+                      : selectedAppointment.startTime || "No especificado"
+                    }
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm font-medium">Motivo</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAppointment.reason}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Servicio</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAppointment.service?.name || "Sin servicio específico"}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium">Estado</Label>
+                <Badge className={getStatusColor(selectedAppointment.status)}>
+                  <div className="flex items-center gap-1">
+                    {getStatusIcon(selectedAppointment.status)}
+                    {getStatusText(selectedAppointment.status)}
+                  </div>
+                </Badge>
+              </div>
+
+              {selectedAppointment.notes && (
+                <div>
+                  <Label className="text-sm font-medium">Notas</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAppointment.notes}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
