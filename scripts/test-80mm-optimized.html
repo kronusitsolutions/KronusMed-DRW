@@ -1,0 +1,173 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Factura INV-00000002</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      margin: 0; 
+      padding: 0;
+      background: white;
+    }
+    .invoice-container {
+      max-width: 80mm;
+      margin: 0 auto;
+      padding: 2mm;
+      font-size: 10px;
+      background: white;
+    }
+    .header { 
+      text-align: center; 
+      margin-bottom: 10px; 
+    }
+    .business-name {
+      font-weight: bold;
+      font-size: 14px;
+      margin: 0;
+    }
+    .business-info {
+      text-align: center;
+      margin-bottom: 8px;
+      font-size: 9px;
+      color: #666;
+    }
+    .separator {
+      border-top: 1px solid #ccc;
+      margin: 8px 0;
+    }
+    .invoice-info { 
+      margin-bottom: 8px; 
+      font-size: 10px;
+    }
+    .invoice-info p {
+      margin: 2px 0;
+    }
+    .services-table-compact {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0;
+      font-size: 9px;
+      table-layout: fixed;
+    }
+    .services-table-compact th,
+    .services-table-compact td {
+      border: 1px solid #ccc;
+      padding: 2px 1px;
+      text-align: center;
+      font-size: 8px;
+      line-height: 1.1;
+    }
+    .services-table-compact th {
+      background-color: #f0f0f0;
+      font-weight: bold;
+      font-size: 8px;
+    }
+    .col-service { width: 30%; text-align: left; padding-left: 2px; }
+    .col-qty { width: 10%; }
+    .col-price { width: 20%; }
+    .col-coverage { width: 15%; }
+    .col-insurance { width: 25%; }
+    .patient-row {
+      background-color: #f9f9f9;
+      font-weight: bold;
+    }
+    .patient-label {
+      text-align: right;
+      font-size: 8px;
+      color: #333;
+    }
+    .patient-amount {
+      color: #dc2626;
+      font-weight: bold;
+      font-size: 9px;
+    }
+    .total { 
+      text-align: right; 
+      font-weight: bold; 
+      font-size: 12px; 
+      margin-top: 10px; 
+      border-top: 2px solid #333;
+      padding-top: 8px;
+    }
+    .custom-message {
+      text-align: center;
+      margin-top: 15px;
+      font-style: italic;
+      font-size: 8px;
+      color: #666;
+    }
+    @media print {
+      body { margin: 0; }
+      .invoice-container { 
+        max-width: none;
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="invoice-container">
+    <div class="header">
+      <h1 class="business-name">Sistema de Clínica Médica</h1>
+      <div class="business-info">
+        <div>Av. Principal 123, Santo Domingo</div>
+        <div>Tel: (809) 555-0123</div>
+        <div>RNC: 123456789</div>
+      </div>
+    </div>
+    
+    <div class="separator"></div>
+    
+    <div class="invoice-info">
+      <p><strong>FACTURA:</strong> INV-00000002</p>
+      <p><strong>FECHA:</strong> 13/9/2025</p>
+      <p><strong>PACIENTE:</strong> Marcos Rafael Polanco Aracena</p>
+      <p><strong>ESTADO:</strong> <span style="color: #22c55e; font-weight: bold;">Pagado</span></p>
+    </div>
+    
+    <div class="separator"></div>
+    
+    <!-- Tabla optimizada para 80mm -->
+    <table class="services-table-compact">
+      <thead>
+        <tr>
+          <th class="col-service">Servicio</th>
+          <th class="col-qty">Cant</th>
+          <th class="col-price">P.Unit</th>
+          <th class="col-coverage">Cob%</th>
+          <th class="col-insurance">Seg Cub</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+            <tr>
+              <td class="col-service">aaa</td>
+              <td class="col-qty">1</td>
+              <td class="col-price">$1000</td>
+              <td class="col-coverage">50%</td>
+              <td class="col-insurance">$500</td>
+            </tr>
+            <tr class="patient-row">
+              <td colspan="4" class="patient-label">Paciente Paga:</td>
+              <td class="patient-amount">$500</td>
+            </tr>
+          
+      </tbody>
+    </table>
+    
+    <div class="total">
+      <p><strong>Total Base: $1000</strong></p>
+      <p>Descuento Total: -$500</p>
+      <p>Seguro Cubre: $500</p>
+      <p><strong>TOTAL A PAGAR: $500</strong></p>
+      <p style="color: #22c55e;">Ahorro: $500</p>
+    </div>
+    
+    <div class="custom-message">
+      13/9/2025 - 20:17
+    </div>
+  </div>
+</body>
+</html>
+  

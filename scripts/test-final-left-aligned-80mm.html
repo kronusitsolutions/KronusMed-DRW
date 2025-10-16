@@ -1,0 +1,170 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Factura INV-00000004</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      margin: 0; 
+      padding: 0;
+      background: white;
+    }
+    .invoice-container {
+      max-width: 80mm;
+      margin: 0 auto;
+      padding: 1mm;
+      font-size: 10px;
+      background: white;
+    }
+    .header { 
+      text-align: left; /* Cambiado de center a left */
+      margin-bottom: 10px; 
+    }
+    .business-name {
+      font-weight: bold;
+      font-size: 14px;
+      margin: 0;
+    }
+    .business-info {
+      text-align: left; /* Cambiado de center a left */
+      margin-bottom: 8px;
+      font-size: 10px; /* Aumentado de 9px a 10px */
+      color: #666;
+    }
+    .separator {
+      border-top: 1px solid #ccc;
+      margin: 8px 0;
+    }
+    .invoice-info { 
+      margin-bottom: 8px; 
+      font-size: 11px; /* Aumentado de 10px a 11px */
+    }
+    .invoice-info p {
+      margin: 2px 0;
+    }
+    .services-vertical {
+      margin: 8px 0;
+    }
+    .service-block {
+      border: 1px solid #ddd;
+      margin-bottom: 3px;
+      padding: 3px;
+      background: #f9f9f9;
+      border-radius: 2px;
+    }
+    .service-title {
+      font-weight: bold;
+      font-size: 11px; /* Aumentado de 10px a 11px */
+      color: #333;
+      margin-bottom: 2px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 1px;
+    }
+    .service-details {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 2px;
+      font-size: 9px; /* Aumentado de 8px a 9px */
+      color: #666;
+      flex-wrap: wrap;
+    }
+    .detail {
+      margin-right: 4px;
+      white-space: nowrap;
+    }
+    .service-totals {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px; /* Aumentado de 9px a 10px */
+      font-weight: bold;
+      border-top: 1px solid #ccc;
+      padding-top: 2px;
+      margin-top: 2px;
+    }
+    .total-label {
+      color: #333;
+    }
+    .total-value {
+      color: #dc2626;
+      font-weight: bold;
+    }
+    .total { 
+      text-align: left; /* Cambiado de right a left */
+      font-weight: bold; 
+      font-size: 12px; /* Aumentado de 14px a 12px para 80mm */
+      margin-top: 15px; 
+      border-top: 2px solid #333;
+      padding-top: 10px;
+    }
+    .custom-message {
+      text-align: left; /* Cambiado de center a left */
+      margin-top: 15px;
+      font-style: italic;
+      font-size: 8px;
+      color: #666;
+    }
+    @media print {
+      body { margin: 0; }
+      .invoice-container { 
+        max-width: none;
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="invoice-container">
+    <div class="header">
+      <h1 class="business-name">Sistema de Clínica Médica</h1>
+      <div class="business-info">
+        <div>Av. Principal 123, Santo Domingo</div>
+        <div>Tel: (809) 555-0123</div>
+        <div>RNC: 123456789</div>
+      </div>
+    </div>
+    
+    <div class="separator"></div>
+    
+    <div class="invoice-info">
+      <p><strong>FACTURA:</strong> INV-00000004</p>
+      <p><strong>FECHA:</strong> 13/9/2025</p>
+      <p><strong>PACIENTE:</strong> Marcos Rafael Polanco Aracena</p>
+      <p><strong>ESTADO:</strong> <span style="color: #22c55e; font-weight: bold;">Pagado</span></p>
+    </div>
+    
+    <div class="separator"></div>
+    
+    <!-- Diseño vertical con alineación izquierda y fuentes aumentadas -->
+    <div class="services-vertical">
+      
+            <div class="service-block">
+              <div class="service-title">aaa</div>
+              <div class="service-details">
+                <span class="detail">Cant:1</span>
+                <span class="detail">Precio:$1000</span>
+                <span class="detail">Cob:50%</span>
+              </div>
+              <div class="service-totals">
+                <span class="total-label">Seg:$500</span>
+                <span class="total-label">Pac:$500</span>
+              </div>
+            </div>
+          
+    </div>
+    
+    <div class="total">
+      <p><strong>Total Base: $1000</strong></p>
+      <p>Descuento Total: -$500</p>
+      <p>Seguro Cubre: $500</p>
+      <p><strong>TOTAL A PAGAR: $500</strong></p>
+      <p style="color: #22c55e;">Ahorro: $500</p>
+    </div>
+    
+    <div class="custom-message">
+      13/9/2025 - 21:22
+    </div>
+  </div>
+</body>
+</html>
+  

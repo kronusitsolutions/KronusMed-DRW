@@ -1,0 +1,303 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      UserRole @default(BILLING)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  invoices Invoice[]
+  appointments Appointment[]
+  medicalNotes MedicalNote[]
+  auditLogs AuditLog[]
+  exonerations InvoiceExoneration[]
+
+  @@map("users")
+}
+
+model Patient {
+  id            String   @id @default(cuid())
+  patientNumber String   @unique @default("A000001")
+  name          String
+  age           Int
+  gender        Gender
+  phone         String?
+  address       String?
+  nationality   String?  // HACER OPCIONAL
+  cedula        String?  // HACER OPCIONAL
+  status        PatientStatus @default(ACTIVE)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relaciones
+  invoices Invoice[]
+  appointments Appointment[]
+  medicalNotes MedicalNote[]
+  
+  // Nueva relación con seguros (opcional)
+  insuranceId String?
+  insurance   Insurance? @relation(fields: [insuranceId], references: [id], onDelete: SetNull)
+
+  // Índices para optimización
+  @@index([status])
+  @@index([createdAt])
+  @@index([name])
+  @@index([cedula])
+  @@index([nationality])
+  @@map("patients")
+}
+
+model Service {
+  id          String   @id @default("serv0001")
+  name        String
+  description String?
+  price       Float
+  category    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  invoiceItems     InvoiceItem[]
+  appointments     Appointment[]
+  insuranceCoverage InsuranceCoverage[]
+
+  // Índices para optimización
+  @@index([isActive])
+  @@index([category])
+  @@index([name])
+  @@index([createdAt])
+  @@map("services")
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  invoiceNumber String      @unique
+  patientId   String
+  userId      String
+  totalAmount Float
+  status      InvoiceStatus @default(PENDING)
+  dueDate     DateTime?
+  paidAt      DateTime?
+  notes       String?
+  insuranceCalculation Json? // Datos de cálculo de seguros
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  patient     Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items       InvoiceItem[]
+  exoneration InvoiceExoneration?
+
+  // Índices para optimización
+  @@index([status])
+  @@index([patientId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([dueDate])
+  @@index([paidAt])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id        String  @id @default(cuid())
+  invoiceId String
+  serviceId String
+  quantity  Int
+  unitPrice Float
+  totalPrice Float
+  notes     String?
+  createdAt DateTime @default(now())
+
+  // Relaciones
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  // Índices para optimización
+  @@index([invoiceId])
+  @@index([serviceId])
+  @@map("invoice_items")
+}
+
+model Appointment {
+  id        String            @id @default(cuid())
+  patientId String
+  doctorId  String
+  serviceId String?
+  date      DateTime?
+  time      String?
+  status    AppointmentStatus @default(SCHEDULED)
+  reason    String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor    User @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  // Índices para optimización
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([serviceId])
+  @@index([date])
+  @@index([status])
+  @@map("appointments")
+}
+
+model MedicalNote {
+  id        String   @id @default(cuid())
+  patientId String
+  doctorId  String
+  content   String
+  diagnosis String?
+  treatment String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor    User @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  // Índices para optimización
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([createdAt])
+  @@map("medical_notes")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  // Relaciones
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Índices para optimización
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model InvoiceExoneration {
+  id               String   @id @default(cuid())
+  invoiceId        String   @unique
+  exoneratedAmount Float
+  reason           String
+  authorId         String
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  // Relaciones
+  invoice          Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  author           User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  // Índices para optimización
+  @@index([invoiceId])
+  @@index([authorId])
+  @@index([createdAt])
+  @@map("invoice_exonerations")
+}
+
+// Modelo para seguros médicos
+model Insurance {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  patients        Patient[]
+  coverage        InsuranceCoverage[]
+
+  // Índices para optimización
+  @@index([isActive])
+  @@index([name])
+  @@map("insurances")
+}
+
+// Modelo para cobertura de seguros por servicio
+model InsuranceCoverage {
+  id          String   @id @default(cuid())
+  insuranceId String
+  serviceId   String
+  coveragePercentage Float // Porcentaje cubierto por el seguro (0-100)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  insurance   Insurance @relation(fields: [insuranceId], references: [id], onDelete: Cascade)
+  service     Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  // Índices para optimización
+  @@index([insuranceId])
+  @@index([serviceId])
+  @@index([isActive])
+  @@unique([insuranceId, serviceId])
+  @@map("insurance_coverage")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  DOCTOR
+  BILLING
+}
+
+enum PatientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  EXONERATED
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
