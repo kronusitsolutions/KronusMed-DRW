@@ -9,6 +9,7 @@ const serviceSchema = z.object({
   name: z.string().min(1, "El nombre del servicio es requerido"),
   description: z.string().optional(),
   price: z.number().min(0, "El precio debe ser mayor a 0"),
+  priceType: z.enum(["FIXED", "DYNAMIC"]).default("FIXED"),
   category: z.string().optional(),
   isActive: z.boolean().default(true)
 })
@@ -81,6 +82,7 @@ export async function GET(request: NextRequest) {
           name: true,
           description: true,
           price: true,
+          priceType: true,
           category: true,
           isActive: true,
           createdAt: true,
@@ -223,6 +225,7 @@ export async function POST(request: NextRequest) {
         name: validatedData.name,
         description: validatedData.description,
         price: validatedData.price,
+        priceType: validatedData.priceType,
         category: validatedData.category,
         isActive: validatedData.isActive
       }
@@ -318,6 +321,7 @@ async function createBulkServices(body: any) {
           name: serviceData.name,
           description: serviceData.description,
           price: serviceData.price,
+          priceType: serviceData.priceType,
           category: serviceData.category,
           isActive: serviceData.isActive
         }

@@ -65,7 +65,7 @@ RUN chown -R nextjs:nodejs /app
 USER nextjs
 
 # Exponer puerto (Railway usa puerto dinámico)
-EXPOSE $PORT
+EXPOSE 3000
 
 # Variables de entorno
 ENV NODE_ENV=production
@@ -74,7 +74,7 @@ ENV TZ=America/Santo_Domingo
 
 # Healthcheck de la aplicación (liveness simple que no depende de DB)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:$PORT/api/health/liveness || exit 1
+  CMD curl -fsS http://127.0.0.1:${PORT:-3000}/api/health/liveness || exit 1
 
 # Comando de inicio: ejecutar migraciones y iniciar servidor
-CMD ["sh", "-c", "echo '🚀 Iniciando Railway...' && if [ -n \"$DATABASE_PUBLIC_URL\" ]; then export DATABASE_URL=\"$DATABASE_PUBLIC_URL\"; fi && echo '📊 Ejecutando migraciones...' && (npx prisma migrate deploy || npx prisma db push || echo '⚠️ Migraciones fallaron, continuando...') && echo '👤 Configurando admin...' && (pnpm run db:setup-production-admin || echo '⚠️ Admin falló, continuando...') && echo '🚀 Iniciando servidor...' && node server.js"]
+CMD ["sh", "-c", "echo '🚀 Iniciando Railway...' && if [ -n \"$DATABASE_PUBLIC_URL\" ]; then export DATABASE_URL=\"$DATABASE_PUBLIC_URL\"; fi && export PORT=${PORT:-3000} && echo '📊 Ejecutando migraciones...' && (npx prisma migrate deploy || npx prisma db push || echo '⚠️ Migraciones fallaron, continuando...') && echo '👤 Configurando admin...' && (pnpm run db:setup-production-admin || echo '⚠️ Admin falló, continuando...') && echo '🚀 Iniciando servidor en puerto $PORT...' && node server.js"]

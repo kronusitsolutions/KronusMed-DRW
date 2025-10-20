@@ -8,7 +8,8 @@ const addServiceSchema = z.object({
   serviceId: z.string().min(1, "El servicio es requerido"),
   quantity: z.number().min(1, "La cantidad debe ser mayor a 0"),
   unitPrice: z.number().min(0, "El precio unitario debe ser mayor o igual a 0"),
-  totalPrice: z.number().min(0, "El precio total debe ser mayor o igual a 0")
+  totalPrice: z.number().min(0, "El precio total debe ser mayor o igual a 0"),
+  dynamicPrice: z.number().min(0, "El precio dinámico debe ser mayor o igual a 0").optional()
 })
 
 export async function POST(
@@ -53,14 +54,33 @@ export async function POST(
       return NextResponse.json({ error: "Servicio no encontrado" }, { status: 404 })
     }
 
+    // Determinar el precio a usar según el tipo de servicio
+    let finalUnitPrice = validatedData.unitPrice
+    let finalTotalPrice = validatedData.totalPrice
+
+    if (service.priceType === 'DYNAMIC') {
+      // Para servicios dinámicos, usar el precio proporcionado en dynamicPrice
+      if (validatedData.dynamicPrice === undefined || validatedData.dynamicPrice <= 0) {
+        return NextResponse.json({ 
+          error: "Los servicios dinámicos requieren un precio válido" 
+        }, { status: 400 })
+      }
+      finalUnitPrice = validatedData.dynamicPrice
+      finalTotalPrice = validatedData.dynamicPrice * validatedData.quantity
+    } else {
+      // Para servicios fijos, usar el precio del servicio
+      finalUnitPrice = service.price
+      finalTotalPrice = service.price * validatedData.quantity
+    }
+
     // Agregar el nuevo item a la factura
     const newItem = await prisma.invoiceItem.create({
       data: {
         invoiceId,
         serviceId: validatedData.serviceId,
         quantity: validatedData.quantity,
-        unitPrice: validatedData.unitPrice,
-        totalPrice: validatedData.totalPrice
+        unitPrice: finalUnitPrice,
+        totalPrice: finalTotalPrice
       }
     })
 

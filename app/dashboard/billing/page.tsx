@@ -55,6 +55,7 @@ interface Service {
   id: string
   name: string
   price: number
+  priceType?: 'FIXED' | 'DYNAMIC'
   category?: string
   description?: string
   isActive?: boolean
@@ -133,6 +134,7 @@ export default function BillingPageUpdated() {
   // Estados para edición de servicios
   const [newServiceId, setNewServiceId] = useState<string>("")
   const [newServiceQuantity, setNewServiceQuantity] = useState<number>(1)
+  const [newServiceDynamicPrice, setNewServiceDynamicPrice] = useState<number>(0)
   const [isUpdatingServices, setIsUpdatingServices] = useState(false)
   const [calculatedTotal, setCalculatedTotal] = useState<number>(0)
   
@@ -323,6 +325,19 @@ export default function BillingPageUpdated() {
       const selectedService = services.find(s => s.id === newServiceId)
       if (!selectedService) return
 
+      // Determinar el precio según el tipo de servicio
+      let unitPrice = selectedService.price
+      let totalPrice = selectedService.price * newServiceQuantity
+
+      if (selectedService.priceType === 'DYNAMIC') {
+        if (newServiceDynamicPrice <= 0) {
+          toast.error("Los servicios dinámicos requieren un precio válido")
+          return
+        }
+        unitPrice = newServiceDynamicPrice
+        totalPrice = newServiceDynamicPrice * newServiceQuantity
+      }
+
       const response = await fetch(`/api/invoices/${invoiceId}/services`, {
         method: 'POST',
         headers: {
@@ -331,8 +346,9 @@ export default function BillingPageUpdated() {
         body: JSON.stringify({
           serviceId: newServiceId,
           quantity: newServiceQuantity,
-          unitPrice: selectedService.price,
-          totalPrice: selectedService.price * newServiceQuantity
+          unitPrice: unitPrice,
+          totalPrice: totalPrice,
+          dynamicPrice: selectedService.priceType === 'DYNAMIC' ? newServiceDynamicPrice : undefined
         })
       })
 
@@ -1620,12 +1636,19 @@ export default function BillingPageUpdated() {
                           >
                             <div className="flex justify-between items-start">
                               <div className="flex-1 min-w-0">
-                                <span className="font-medium text-gray-900 truncate">{service.name}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-gray-900 truncate">{service.name}</span>
+                                  {service.priceType === 'DYNAMIC' && (
+                                    <Badge variant="outline" className="text-xs">
+                                      Dinámico
+                                    </Badge>
+                                  )}
+                                </div>
                                 <div className="text-xs text-gray-400 mt-1">ID: {service.id}</div>
                               </div>
                               <div className="text-right ml-3">
                                 <span className="text-blue-600 font-semibold text-sm">
-                                  ${service.price.toFixed(2)}
+                                  {service.priceType === 'DYNAMIC' ? 'Precio dinámico' : `$${service.price.toFixed(2)}`}
                                 </span>
                               </div>
                             </div>
@@ -1819,18 +1842,38 @@ export default function BillingPageUpdated() {
                       <div className="mt-4 pt-4 border-t">
                         <Label className="text-sm font-medium">Agregar Servicio</Label>
                         <div className="mt-2 space-y-2">
-                          <Select onValueChange={(value) => setNewServiceId(value)}>
+                          <Select onValueChange={(value) => {
+                            setNewServiceId(value)
+                            setNewServiceDynamicPrice(0) // Reset precio dinámico
+                          }}>
                             <SelectTrigger>
                               <SelectValue placeholder="Seleccionar servicio" />
                             </SelectTrigger>
                             <SelectContent>
                               {services.map((service) => (
                                 <SelectItem key={service.id} value={service.id}>
-                                  {service.name} - ${service.price.toFixed(2)}
+                                  {service.name} - {service.priceType === 'DYNAMIC' ? 'Precio dinámico' : `$${service.price.toFixed(2)}`}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
+                          
+                          {/* Campo de precio dinámico */}
+                          {newServiceId && services.find(s => s.id === newServiceId)?.priceType === 'DYNAMIC' && (
+                            <div className="space-y-1">
+                              <Label className="text-xs text-gray-600">Precio del servicio</Label>
+                              <Input
+                                type="number"
+                                placeholder="Ingrese el precio"
+                                value={newServiceDynamicPrice}
+                                onChange={(e) => setNewServiceDynamicPrice(parseFloat(e.target.value) || 0)}
+                                min="0"
+                                step="0.01"
+                                className="w-full"
+                              />
+                            </div>
+                          )}
+                          
                           <div className="flex gap-2">
                             <Input
                               type="number"
@@ -1843,7 +1886,7 @@ export default function BillingPageUpdated() {
                             <Button
                               type="button"
                               onClick={() => handleAddService(selectedInvoice.id)}
-                              disabled={!newServiceId || newServiceQuantity < 1}
+                              disabled={!newServiceId || newServiceQuantity < 1 || (services.find(s => s.id === newServiceId)?.priceType === 'DYNAMIC' && newServiceDynamicPrice <= 0)}
                               size="sm"
                             >
                               <Plus className="h-4 w-4 mr-1" />

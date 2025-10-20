@@ -62,6 +62,7 @@ model Service {
   name              String
   description       String?
   price             Float
+  priceType         PriceType           @default(FIXED)
   category          String?
   isActive          Boolean             @default(true)
   createdAt         DateTime            @default(now())
@@ -355,4 +356,9 @@ enum MedicalNoteType {
 enum DoctorStatus {
   ACTIVE
   INACTIVE
+}
+
+enum PriceType {
+  FIXED
+  DYNAMIC
 }

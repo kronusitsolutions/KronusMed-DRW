@@ -61,6 +61,7 @@ const serviceSchema = z.object({
   name: z.string().min(1, "El nombre del servicio es requerido"),
   description: z.string().optional(),
   price: z.number().min(0, "El precio debe ser mayor a 0"),
+  priceType: z.enum(["FIXED", "DYNAMIC"]).default("FIXED"),
   category: z.string().optional(),
   isActive: z.boolean().default(true)
 })
@@ -121,6 +122,7 @@ export default function ServicesPage() {
     handleSubmit,
     reset,
     setValue,
+    watch,
     formState: { errors }
   } = useForm<ServiceForm>({
     resolver: zodResolver(serviceSchema)
@@ -188,6 +190,7 @@ export default function ServicesPage() {
     setValue('name', service.name)
     setValue('description', service.description || '')
     setValue('price', service.price)
+    setValue('priceType', service.priceType || 'FIXED')
     setValue('category', service.category || '')
     setValue('isActive', service.isActive)
     setIsEditDialogOpen(true)
@@ -462,19 +465,38 @@ export default function ServicesPage() {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="priceType">Tipo de Precio</Label>
+              <select
+                id="priceType"
+                {...register('priceType')}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="FIXED">Precio Fijo</option>
+                <option value="DYNAMIC">Precio Dinámico</option>
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="price">Precio</Label>
+                <Label htmlFor="price">
+                  Precio {watch('priceType') === 'DYNAMIC' ? '(Referencial)' : ''}
+                </Label>
                 <Input
                   id="price"
                   type="number"
                   step="0.01"
                   min="0"
                   {...register('price', { valueAsNumber: true })}
-                  placeholder="0.00"
+                  placeholder={watch('priceType') === 'DYNAMIC' ? "0.00 (opcional)" : "0.00"}
                 />
                 {errors.price && (
                   <p className="text-sm text-red-500">{errors.price.message}</p>
+                )}
+                {watch('priceType') === 'DYNAMIC' && (
+                  <p className="text-xs text-gray-500">
+                    Para servicios dinámicos, el precio se establece al momento de facturar
+                  </p>
                 )}
               </div>
 
@@ -540,19 +562,38 @@ export default function ServicesPage() {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="edit-priceType">Tipo de Precio</Label>
+              <select
+                id="edit-priceType"
+                {...register('priceType')}
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="FIXED">Precio Fijo</option>
+                <option value="DYNAMIC">Precio Dinámico</option>
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-price">Precio</Label>
+                <Label htmlFor="edit-price">
+                  Precio {watch('priceType') === 'DYNAMIC' ? '(Referencial)' : ''}
+                </Label>
                 <Input
                   id="edit-price"
                   type="number"
                   step="0.01"
                   min="0"
                   {...register('price', { valueAsNumber: true })}
-                  placeholder="0.00"
+                  placeholder={watch('priceType') === 'DYNAMIC' ? "0.00 (opcional)" : "0.00"}
                 />
                 {errors.price && (
                   <p className="text-sm text-red-500">{errors.price.message}</p>
+                )}
+                {watch('priceType') === 'DYNAMIC' && (
+                  <p className="text-xs text-gray-500">
+                    Para servicios dinámicos, el precio se establece al momento de facturar
+                  </p>
                 )}
               </div>
 
