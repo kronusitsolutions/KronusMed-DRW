@@ -54,6 +54,7 @@ interface Service {
   id: string
   name: string
   price: number
+  priceType?: 'FIXED' | 'DYNAMIC'
   category?: string
   description?: string
   isActive?: boolean

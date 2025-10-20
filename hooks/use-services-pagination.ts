@@ -5,6 +5,7 @@ export interface Service {
   name: string
   description?: string
   price: number
+  priceType?: 'FIXED' | 'DYNAMIC'
   category?: string
   isActive: boolean
   createdAt: string
