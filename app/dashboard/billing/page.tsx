@@ -112,6 +112,10 @@ export default function BillingPageUpdated() {
   const [selectedPatientInsurance, setSelectedPatientInsurance] = useState<string | null>(null)
   const [insuranceCalculation, setInsuranceCalculation] = useState<any>(null)
   
+  // Estados para servicios dinámicos
+  const [dynamicPrices, setDynamicPrices] = useState<{[key: string]: number}>({})
+  const [editingDynamicPrice, setEditingDynamicPrice] = useState<string | null>(null)
+  
   // Estados para búsqueda simple de pacientes
   const [patientSearchTerm, setPatientSearchTerm] = useState("")
   const [patientSearchResults, setPatientSearchResults] = useState<Patient[]>([])
@@ -1419,20 +1423,41 @@ export default function BillingPageUpdated() {
   const addService = (serviceName: string) => {
     const service = services.find(s => s.name === serviceName)
     if (service) {
+      const uniqueId = Date.now()
       const newService = {
         ...service,
-        uniqueId: Date.now()
+        uniqueId: uniqueId
       }
+      
+      // Si es un servicio dinámico, inicializar el precio dinámico
+      if (service.priceType === 'DYNAMIC') {
+        setDynamicPrices(prev => ({
+          ...prev,
+          [uniqueId.toString()]: service.price || 0 // Usar precio referencial o 0
+        }))
+      }
+      
       setSelectedServices(prev => [...prev, newService])
     }
   }
 
   const removeService = (uniqueId: number) => {
     setSelectedServices(prev => prev.filter(s => s.uniqueId !== uniqueId))
+    // Limpiar precio dinámico si existe
+    setDynamicPrices(prev => {
+      const newPrices = { ...prev }
+      delete newPrices[uniqueId.toString()]
+      return newPrices
+    })
   }
 
   const calculateTotal = () => {
-    return selectedServices.reduce((total, service) => total + service.price, 0)
+    return selectedServices.reduce((total, service) => {
+      if (service.priceType === 'DYNAMIC') {
+        return total + (dynamicPrices[service.uniqueId!.toString()] || 0)
+      }
+      return total + service.price
+    }, 0)
   }
 
   const handleCreateInvoice = async (e: React.FormEvent) => {
@@ -1453,12 +1478,16 @@ export default function BillingPageUpdated() {
       
       const invoiceData = {
         patientId: selectedPatient.id,
-        items: selectedServices.map(s => ({
-          serviceId: s.id,
-          quantity: 1,
-          unitPrice: s.price,
-          totalPrice: s.price
-        })),
+        items: selectedServices.map(s => {
+          const unitPrice = s.priceType === 'DYNAMIC' ? (dynamicPrices[s.uniqueId!.toString()] || 0) : s.price
+          return {
+            serviceId: s.id,
+            quantity: 1,
+            unitPrice: unitPrice,
+            totalPrice: unitPrice,
+            dynamicPrice: s.priceType === 'DYNAMIC' ? unitPrice : undefined
+          }
+        }),
         totalAmount: insuranceCalculation ? insuranceCalculation.totalPatientPays : calculateTotal(),
         insuranceCalculation: insuranceCalculation
       }
@@ -1480,6 +1509,8 @@ export default function BillingPageUpdated() {
         setInsuranceCalculation(null)
         setPatientSearchTerm("")
         setShowPatientResults(false)
+        setDynamicPrices({})
+        setEditingDynamicPrice(null)
         await refetch()
         await fetchGlobalStats()
       } else {
@@ -1685,11 +1716,61 @@ export default function BillingPageUpdated() {
                         <h4 className="font-medium text-sm text-gray-700 mb-2">Servicios seleccionados:</h4>
                         {selectedServices.map((service) => (
                           <div key={service.uniqueId} className="flex justify-between items-center p-2 bg-blue-50 rounded">
-                            <div>
-                              <span className="font-medium">{service.name}</span>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{service.name}</span>
+                                {service.priceType === 'DYNAMIC' && (
+                                  <Badge variant="outline" className="text-xs">
+                                    Dinámico
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                             <div className="flex items-center space-x-2">
-                              <span className="font-semibold text-blue-600">${service.price.toFixed(2)}</span>
+                              {service.priceType === 'DYNAMIC' ? (
+                                <div className="flex items-center space-x-2">
+                                  {editingDynamicPrice === service.uniqueId?.toString() ? (
+                                    <div className="flex items-center space-x-1">
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={dynamicPrices[service.uniqueId!.toString()] || 0}
+                                        onChange={(e) => setDynamicPrices(prev => ({
+                                          ...prev,
+                                          [service.uniqueId!.toString()]: parseFloat(e.target.value) || 0
+                                        }))}
+                                        className="w-20 h-8 text-sm"
+                                        onBlur={() => setEditingDynamicPrice(null)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            setEditingDynamicPrice(null)
+                                          }
+                                        }}
+                                        autoFocus
+                                      />
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setEditingDynamicPrice(null)}
+                                        className="h-8 px-2"
+                                      >
+                                        ✓
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div 
+                                      className="font-semibold text-blue-600 cursor-pointer hover:bg-blue-100 px-2 py-1 rounded"
+                                      onClick={() => setEditingDynamicPrice(service.uniqueId!.toString())}
+                                    >
+                                      ${(dynamicPrices[service.uniqueId!.toString()] || 0).toFixed(2)}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="font-semibold text-blue-600">${service.price.toFixed(2)}</span>
+                              )}
                               <Button
                                 type="button"
                                 variant="outline"
