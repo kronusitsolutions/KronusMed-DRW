@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Search, X, Eye, Edit, Trash2, Calendar, Phone, MapPin, User, FileText, Loader2, AlertCircle, DollarSign, Printer, CreditCard } from 'lucide-react'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Search, X, Eye, Edit, Trash2, Calendar, Phone, MapPin, User, FileText, Loader2, AlertCircle, DollarSign, Printer, CreditCard, ChevronDown, Receipt } from 'lucide-react'
 import { OptimizedSearch } from '@/components/patients/optimized-search'
 import { PaginationControls } from '@/components/patients/pagination-controls'
 import { Invoice } from '@/types/invoice'
@@ -29,6 +30,7 @@ interface PaginatedInvoiceListProps {
   onDeleteInvoice?: (invoice: Invoice) => void
   onPrintInvoice?: (invoice: Invoice) => void
   onRegisterPayment?: (invoice: Invoice) => void
+  onPrintPaymentReceipt?: (invoiceId: string, paymentId: string) => void
   onRefetch?: () => void
   className?: string
 }
@@ -53,6 +55,7 @@ export function PaginatedInvoiceList({
   onDeleteInvoice,
   onPrintInvoice,
   onRegisterPayment,
+  onPrintPaymentReceipt,
   onRefetch,
   className = ""
 }: PaginatedInvoiceListProps) {
@@ -200,6 +203,56 @@ export function PaginatedInvoiceList({
               >
                 <CreditCard className="h-3 w-3" />
               </Button>
+            )}
+            
+            {/* Botón para ver pagos - solo para facturas parciales */}
+            {onPrintPaymentReceipt && invoice.status === 'PARTIAL' && invoice.payments && invoice.payments.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isActionLoading}
+                    className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700"
+                    title="Ver pagos"
+                  >
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80">
+                  <div className="p-2">
+                    <div className="text-sm font-medium mb-2">Pagos Realizados</div>
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {invoice.payments.map((payment, index) => (
+                        <div key={payment.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium">
+                              Pago #{index + 1}
+                            </div>
+                            <div className="text-xs text-gray-600">
+                              {new Date(payment.paidAt).toLocaleDateString('es-ES')} - ${payment.amount.toFixed(2)}
+                            </div>
+                            {payment.paymentMethod && (
+                              <div className="text-xs text-gray-500">
+                                {payment.paymentMethod}
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onPrintPaymentReceipt(invoice.id, payment.id)}
+                            className="h-6 w-6 p-0 text-blue-600 hover:text-blue-700"
+                            title="Imprimir recibo"
+                          >
+                            <Receipt className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             
             {onEditInvoice && (

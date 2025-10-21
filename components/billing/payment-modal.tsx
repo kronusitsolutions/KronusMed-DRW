@@ -2,13 +2,14 @@
 
 import React, { useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, DollarSign, AlertCircle } from 'lucide-react'
+import { Loader2, DollarSign, AlertCircle, Printer } from 'lucide-react'
 import { toast } from 'sonner'
 import { Invoice } from '@/types/invoice'
 
@@ -17,13 +18,16 @@ interface PaymentModalProps {
   onClose: () => void
   invoice: Invoice | null
   onPaymentSuccess: () => void
+  onPrintReceipt?: (invoiceId: string, paymentId: string) => void
 }
 
-export function PaymentModal({ isOpen, onClose, invoice, onPaymentSuccess }: PaymentModalProps) {
+export function PaymentModal({ isOpen, onClose, invoice, onPaymentSuccess, onPrintReceipt }: PaymentModalProps) {
   const [amount, setAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('')
   const [notes, setNotes] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showPrintDialog, setShowPrintDialog] = useState(false)
+  const [lastPaymentId, setLastPaymentId] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -59,9 +63,19 @@ export function PaymentModal({ isOpen, onClose, invoice, onPaymentSuccess }: Pay
       })
 
       if (response.ok) {
+        const result = await response.json()
         toast.success("Pago registrado exitosamente")
-        onPaymentSuccess()
-        handleClose()
+        
+        // Guardar el ID del pago para el diálogo de confirmación
+        setLastPaymentId(result.payment.id)
+        
+        // Mostrar diálogo de confirmación para imprimir recibo
+        if (onPrintReceipt) {
+          setShowPrintDialog(true)
+        } else {
+          onPaymentSuccess()
+          handleClose()
+        }
       } else {
         const errorData = await response.json()
         toast.error(errorData.error || "Error al registrar el pago")
@@ -78,7 +92,24 @@ export function PaymentModal({ isOpen, onClose, invoice, onPaymentSuccess }: Pay
     setAmount('')
     setPaymentMethod('')
     setNotes('')
+    setShowPrintDialog(false)
+    setLastPaymentId(null)
     onClose()
+  }
+
+  const handlePrintReceipt = () => {
+    if (invoice && lastPaymentId && onPrintReceipt) {
+      onPrintReceipt(invoice.id, lastPaymentId)
+    }
+    setShowPrintDialog(false)
+    onPaymentSuccess()
+    handleClose()
+  }
+
+  const handleSkipPrint = () => {
+    setShowPrintDialog(false)
+    onPaymentSuccess()
+    handleClose()
   }
 
   const pendingAmount = invoice?.pendingAmount || invoice?.totalAmount || 0
@@ -205,6 +236,30 @@ export function PaymentModal({ isOpen, onClose, invoice, onPaymentSuccess }: Pay
           </DialogFooter>
         </form>
       </DialogContent>
+      
+      {/* Diálogo de confirmación para imprimir recibo */}
+      <AlertDialog open={showPrintDialog} onOpenChange={setShowPrintDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Printer className="h-5 w-5 text-blue-600" />
+              ¿Imprimir Recibo de Pago?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              El pago se ha registrado exitosamente. ¿Desea imprimir el recibo de pago ahora?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleSkipPrint}>
+              No, gracias
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handlePrintReceipt} className="bg-blue-600 hover:bg-blue-700">
+              <Printer className="mr-2 h-4 w-4" />
+              Sí, imprimir recibo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

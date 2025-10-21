@@ -528,6 +528,50 @@ export default function BillingPageUpdated() {
     }
   }
 
+  const handlePrintPaymentReceipt = async (invoiceId: string, paymentId: string) => {
+    try {
+      // Obtener el diseño activo
+      const design = await getActiveInvoiceDesign()
+      
+      // Obtener los datos del pago y factura para impresión
+      const response = await fetch(`/api/invoices/${invoiceId}/payments/${paymentId}/print`)
+      if (!response.ok) {
+        throw new Error('Error al obtener los datos del pago')
+      }
+      const { payment, invoice } = await response.json()
+      
+      // Crear una nueva ventana para imprimir
+      const printWindow = window.open('', '_blank', 'width=800,height=600')
+      
+      if (!printWindow) {
+        toast.error("No se pudo abrir la ventana de impresión. Verifica que los popups estén habilitados.")
+        return
+      }
+
+      // Generar el contenido HTML del recibo con diseño personalizado
+      const receiptContent = await generatePaymentReceiptHTML(payment, invoice, design)
+      
+      printWindow.document.write(receiptContent)
+      printWindow.document.close()
+      
+      // Esperar a que se cargue el contenido y luego imprimir
+      printWindow.onload = () => {
+        printWindow.focus()
+        printWindow.print()
+        
+        // Cerrar la ventana después de imprimir
+        printWindow.onafterprint = () => {
+          printWindow.close()
+        }
+      }
+      
+      toast.success(`Preparando recibo REC-${paymentId} para impresión...`)
+    } catch (error) {
+      console.error("Error al imprimir recibo:", error)
+      toast.error("Error al preparar el recibo para impresión")
+    }
+  }
+
   const handlePrintInvoice = async (invoice: Invoice) => {
     try {
       // Obtener el diseño activo
@@ -875,6 +919,259 @@ export default function BillingPageUpdated() {
           <div class="separator"></div>
           <div style="text-align: center; font-size: 10px; color: #666; margin-top: 10px;">
             <p>Esta factura ha sido oficialmente exonerada y no requiere pago.</p>
+            <p>Documento generado el ${currentDate} por el sistema KronusMed</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `
+  }
+
+  // Función para generar el HTML del recibo de pago con diseño personalizado
+  const generatePaymentReceiptHTML = async (payment: any, invoice: Invoice, design: any) => {
+    const currentDate = new Date().toLocaleDateString('es-ES')
+    const paymentDate = new Date(payment.paidAt).toLocaleDateString('es-ES')
+    const invoiceDate = new Date(invoice.createdAt).toLocaleDateString('es-ES')
+    
+    // Usar diseño personalizado o valores por defecto
+    const finalDesign = design || {
+      businessName: 'Sistema de Clínica Médica',
+      address: 'Dirección no configurada',
+      phone: 'Teléfono no configurado',
+      taxId: 'RNC no configurado',
+      customMessage: 'Gracias por su preferencia',
+      format: '80MM',
+      logoUrl: '',
+      logoPosition: 'LEFT'
+    }
+    
+    const formatStyles = getFormatStyles(finalDesign.format)
+    const logoPositionClass = getLogoPositionClass(finalDesign.logoPosition)
+    
+    return `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Recibo de Pago ${payment.id}</title>
+        <style>
+          body { 
+            font-family: Arial, sans-serif; 
+            margin: 0; 
+            padding: 0;
+            background: white;
+          }
+          .receipt-container {
+            max-width: ${formatStyles.maxWidth};
+            margin: 0 auto;
+            padding: ${formatStyles.padding};
+            font-size: ${formatStyles.fontSize};
+            background: white;
+            border: 2px solid #059669;
+          }
+          .receipt-header {
+            background: linear-gradient(135deg, #059669, #10b981);
+            color: white;
+            text-align: center;
+            padding: 15px;
+            margin: -2px -2px 15px -2px;
+            border-radius: 5px 5px 0 0;
+          }
+          .receipt-title {
+            font-size: ${finalDesign.format === '80MM' ? '18px' : '24px'};
+            font-weight: bold;
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+          }
+          .receipt-subtitle {
+            font-size: ${finalDesign.format === '80MM' ? '12px' : '16px'};
+            margin: 5px 0 0 0;
+            opacity: 0.9;
+          }
+          .header { 
+            text-align: center; 
+            margin-bottom: 10px; 
+          }
+          .business-name {
+            font-weight: bold;
+            font-size: ${finalDesign.format === '80MM' ? '14px' : '18px'};
+            margin: 0;
+          }
+          .business-info {
+            text-align: center;
+            margin-bottom: 8px;
+            font-size: ${finalDesign.format === '80MM' ? '9px' : '12px'};
+            color: #666;
+          }
+          .separator {
+            border-top: 1px solid #ccc;
+            margin: 8px 0;
+          }
+          .receipt-info { 
+            margin-bottom: 8px; 
+            font-size: ${finalDesign.format === '80MM' ? '10px' : '12px'};
+          }
+          .receipt-info p {
+            margin: 2px 0;
+          }
+          .payment-details {
+            background: #f0fdf4;
+            border: 2px solid #bbf7d0;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+          }
+          .payment-details h3 {
+            color: #059669;
+            margin: 0 0 10px 0;
+            font-size: ${finalDesign.format === '80MM' ? '14px' : '16px'};
+          }
+          .payment-amount {
+            background: white;
+            border: 1px solid #bbf7d0;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-weight: bold;
+            font-size: ${finalDesign.format === '80MM' ? '14px' : '18px'};
+            color: #059669;
+            text-align: center;
+          }
+          .payment-method {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            font-size: ${finalDesign.format === '80MM' ? '10px' : '12px'};
+          }
+          .invoice-summary {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 15px 0;
+            font-size: ${finalDesign.format === '80MM' ? '9px' : '11px'};
+          }
+          .summary-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 4px 0;
+          }
+          .summary-total {
+            font-weight: bold;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 6px;
+            color: #059669;
+          }
+          .custom-message {
+            text-align: center;
+            margin-top: 15px;
+            font-style: italic;
+            font-size: ${finalDesign.format === '80MM' ? '8px' : '10px'};
+            color: #666;
+          }
+          .logo-container {
+            display: flex;
+            align-items: center;
+            justify-content: ${logoPositionClass === 'justify-start' ? 'flex-start' : logoPositionClass === 'justify-center' ? 'center' : 'flex-end'};
+            margin-bottom: 10px;
+          }
+          .logo {
+            max-height: ${finalDesign.format === '80MM' ? '30px' : '50px'};
+            max-width: ${finalDesign.format === '80MM' ? '60px' : '100px'};
+            margin-right: 10px;
+          }
+          @media print {
+            body { margin: 0; }
+            .receipt-container { 
+              max-width: none;
+              width: 100%;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="receipt-container">
+          <div class="receipt-header">
+            <h1 class="receipt-title">RECIBO DE PAGO</h1>
+            <p class="receipt-subtitle">Comprobante de Pago Individual</p>
+          </div>
+          
+          <div class="header">
+            ${finalDesign.logoUrl ? `
+              <div class="logo-container">
+                <img src="${finalDesign.logoUrl}" alt="Logo" class="logo" />
+                <h1 class="business-name">${finalDesign.businessName}</h1>
+              </div>
+            ` : `
+              <h1 class="business-name">${finalDesign.businessName}</h1>
+            `}
+            
+            ${(finalDesign.address || finalDesign.phone || finalDesign.taxId) ? `
+              <div class="business-info">
+                ${finalDesign.address ? `<div>${finalDesign.address}</div>` : ''}
+                ${finalDesign.phone ? `<div>Tel: ${finalDesign.phone}</div>` : ''}
+                ${finalDesign.taxId ? `<div>RNC: ${finalDesign.taxId}</div>` : ''}
+              </div>
+            ` : ''}
+          </div>
+          
+          <div class="separator"></div>
+          
+          <div class="receipt-info">
+            <p><strong>Recibo:</strong> REC-${payment.id}</p>
+            <p><strong>Fecha del Pago:</strong> ${paymentDate}</p>
+            <p><strong>Factura Ref:</strong> ${invoice.invoiceNumber}</p>
+            <p><strong>Fecha Factura:</strong> ${invoiceDate}</p>
+            ${invoice.patient ? `<p><strong>Paciente:</strong> ${invoice.patient.name}</p>` : ''}
+          </div>
+          
+          <div class="separator"></div>
+          
+          <div class="payment-details">
+            <h3>Detalle del Pago</h3>
+            <div class="payment-amount">
+              Monto del Abono: $${payment.amount.toFixed(2)}
+            </div>
+            <div class="payment-method">
+              <span><strong>Método de Pago:</strong></span>
+              <span>${payment.paymentMethod || 'No especificado'}</span>
+            </div>
+            ${payment.notes ? `
+              <div class="payment-method">
+                <span><strong>Notas:</strong></span>
+                <span>${payment.notes}</span>
+              </div>
+            ` : ''}
+          </div>
+          
+          <div class="invoice-summary">
+            <div style="font-weight: bold; margin-bottom: 8px; color: #1e293b;">Resumen de Factura</div>
+            <div class="summary-row">
+              <span>Total Factura:</span>
+              <span>$${invoice.totalAmount.toFixed(2)}</span>
+            </div>
+            <div class="summary-row">
+              <span>Total Pagado:</span>
+              <span>$${(invoice.paidAmount || 0).toFixed(2)}</span>
+            </div>
+            <div class="summary-row summary-total">
+              <span>Saldo Pendiente:</span>
+              <span>$${(invoice.pendingAmount || 0).toFixed(2)}</span>
+            </div>
+          </div>
+          
+          ${finalDesign.customMessage ? `
+            <div class="separator"></div>
+            <div class="custom-message">
+              ${finalDesign.customMessage}
+            </div>
+          ` : ''}
+          
+          <div class="separator"></div>
+          <div style="text-align: center; font-size: 10px; color: #666; margin-top: 10px;">
+            <p>Este recibo certifica el pago realizado el ${paymentDate}</p>
             <p>Documento generado el ${currentDate} por el sistema KronusMed</p>
           </div>
         </div>
@@ -2441,13 +2738,14 @@ export default function BillingPageUpdated() {
               statusFilter={statusFilter}
               setStatusFilter={setStatusFilter}
               onPageChange={goToPage}
-        onViewInvoice={handleViewInvoice}
-        onEditInvoice={handleEditInvoice}
-        onDeleteInvoice={handleDeleteInvoice}
-        onPrintInvoice={handlePrintInvoice}
-        onRegisterPayment={handleRegisterPayment}
-        onRefetch={refetch}
-      />
+              onViewInvoice={handleViewInvoice}
+              onEditInvoice={handleEditInvoice}
+              onDeleteInvoice={handleDeleteInvoice}
+              onPrintInvoice={handlePrintInvoice}
+              onRegisterPayment={handleRegisterPayment}
+              onPrintPaymentReceipt={handlePrintPaymentReceipt}
+              onRefetch={refetch}
+            />
 
       {/* Modal de Registro de Pagos */}
       <PaymentModal
@@ -2455,6 +2753,7 @@ export default function BillingPageUpdated() {
         onClose={() => setIsPaymentModalOpen(false)}
         invoice={selectedInvoiceForPayment}
         onPaymentSuccess={handlePaymentSuccess}
+        onPrintReceipt={handlePrintPaymentReceipt}
       />
 
     </div>
