@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
     const currentPaidInvoices = currentInvoices.filter(invoice => invoice.status === 'PAID')
     const currentPendingInvoices = currentInvoices.filter(invoice => invoice.status === 'PENDING')
     const currentPartialInvoices = currentInvoices.filter(invoice => invoice.status === 'PARTIAL')
-    const currentExoneratedInvoices = currentInvoices.filter(invoice => invoice.status === 'EXONERATED' || invoice.exoneration)
+    const currentExoneratedInvoices = currentInvoices.filter(invoice => invoice.status === 'EXONERATED')
 
     const currentRevenue = currentPaidInvoices.reduce((sum, invoice) => sum + invoice.totalAmount, 0) + 
                          currentPartialInvoices.reduce((sum, invoice) => sum + (invoice.paidAmount || 0), 0)
@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
     const previousPaidInvoices = previousInvoices.filter(invoice => invoice.status === 'PAID')
     const previousPendingInvoices = previousInvoices.filter(invoice => invoice.status === 'PENDING')
     const previousPartialInvoices = previousInvoices.filter(invoice => invoice.status === 'PARTIAL')
-    const previousExoneratedInvoices = previousInvoices.filter(invoice => invoice.status === 'EXONERATED' || invoice.exoneration)
+    const previousExoneratedInvoices = previousInvoices.filter(invoice => invoice.status === 'EXONERATED')
 
     const previousRevenue = previousPaidInvoices.reduce((sum, invoice) => sum + invoice.totalAmount, 0) + 
                           previousPartialInvoices.reduce((sum, invoice) => sum + (invoice.paidAmount || 0), 0)

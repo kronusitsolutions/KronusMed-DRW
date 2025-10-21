@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
     const period = searchParams.get("period") || "6"
 
     // Configurar rango de fechas
-    let dateFilter = {}
+    let dateFilter: { createdAt?: { gte: Date; lte: Date } } = {}
     if (startDate && endDate) {
       dateFilter = {
         createdAt: {

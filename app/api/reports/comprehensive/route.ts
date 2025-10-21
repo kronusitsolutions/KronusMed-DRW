@@ -427,6 +427,7 @@ export async function GET(request: NextRequest) {
     const averageDaysOverdue = calculateAverageDaysOverdue(allInvoices)
     
     // Calcular período anterior para comparación
+    const now = new Date()
     const currentStart = startDate ? new Date(startDate) : new Date(now.getFullYear(), now.getMonth() - (parseInt(period) - 1), 1)
     const currentEnd = endDate ? new Date(endDate) : now
     const previousStart = new Date(currentStart.getTime() - (currentEnd.getTime() - currentStart.getTime()))
