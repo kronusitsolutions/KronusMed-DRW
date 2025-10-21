@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { 
+  calculateAgingReport, 
+  calculatePatientMetrics, 
+  calculatePartialPaymentsTrend,
+  calculatePartialPaymentConversion,
+  calculateDelinquencyRate,
+  calculateAverageDaysOverdue,
+  PeriodData
+} from "@/lib/report-calculations"
 
 export async function GET(request: NextRequest) {
   try {
@@ -393,6 +402,60 @@ export async function GET(request: NextRequest) {
       actualStartDate = startDateObj.toISOString().split('T')[0]
     }
 
+    // === NUEVOS CÁLCULOS Y KPIs ===
+    
+    // Aging report de cuentas por cobrar
+    const agingReport = calculateAgingReport(allInvoices)
+    
+    // Métricas de pacientes
+    const patientMetrics = calculatePatientMetrics(allPatients, allAppointments, allInvoices)
+    
+    // Tendencias de pagos parciales
+    const partialPaymentsTrend = calculatePartialPaymentsTrend(allInvoices, parseInt(period))
+    
+    // Conversión de pagos parciales
+    const partialPaymentConversion = calculatePartialPaymentConversion(partialInvoices)
+    
+    // Tasa de morosidad
+    const delinquencyRate = calculateDelinquencyRate(
+      pendingInvoices.length, 
+      partialInvoices.length, 
+      allInvoices.length
+    )
+    
+    // Promedio de días de atraso
+    const averageDaysOverdue = calculateAverageDaysOverdue(allInvoices)
+    
+    // Calcular período anterior para comparación
+    const currentStart = startDate ? new Date(startDate) : new Date(now.getFullYear(), now.getMonth() - (parseInt(period) - 1), 1)
+    const currentEnd = endDate ? new Date(endDate) : now
+    const previousStart = new Date(currentStart.getTime() - (currentEnd.getTime() - currentStart.getTime()))
+    const previousEnd = new Date(currentStart.getTime() - 1)
+    
+    // Datos del período anterior para comparación
+    const previousPeriodInvoices = allInvoices.filter(invoice => {
+      const invoiceDate = new Date(invoice.createdAt)
+      return invoiceDate >= previousStart && invoiceDate <= previousEnd
+    })
+    
+    const previousPeriodRevenue = previousPeriodInvoices
+      .filter(invoice => invoice.status === 'PAID' || invoice.status === 'PARTIAL')
+      .reduce((sum, invoice) => {
+        if (invoice.status === 'PAID') return sum + invoice.totalAmount
+        if (invoice.status === 'PARTIAL') return sum + (invoice.paidAmount || 0)
+        return sum
+      }, 0)
+    
+    const previousPeriodAppointments = allAppointments.filter(appointment => {
+      const appointmentDate = new Date(appointment.date)
+      return appointmentDate >= previousStart && appointmentDate <= previousEnd
+    })
+    
+    const previousPeriodPatients = allPatients.filter(patient => {
+      const patientDate = new Date(patient.createdAt)
+      return patientDate >= previousStart && patientDate <= previousEnd
+    })
+
     const reportData = {
       periodInfo: {
         label: periodLabel,
@@ -455,6 +518,25 @@ export async function GET(request: NextRequest) {
         totalExoneratedAmount: periodExoneratedRevenue,
         exonerationsByReason: exonerationsByReasonArray,
         monthlyExonerations: monthlyRevenue.map(m => ({ month: m.month, count: 0, amount: 0 })) // Placeholder
+      },
+      // === NUEVOS KPIs ===
+      agingReport,
+      patientMetrics,
+      partialPaymentsTrend,
+      partialPaymentConversion,
+      delinquencyRate,
+      averageDaysOverdue,
+      comparison: {
+        current: {
+          revenue: periodRevenue,
+          appointments: totalAppointments,
+          patients: activePatients
+        },
+        previous: {
+          revenue: previousPeriodRevenue,
+          appointments: previousPeriodAppointments.length,
+          patients: previousPeriodPatients.length
+        }
       }
     }
 

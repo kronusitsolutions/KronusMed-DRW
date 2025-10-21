@@ -38,6 +38,10 @@ import {
   Heart
 } from 'lucide-react'
 import { toast } from "sonner"
+import { MetricCard, FinancialMetricCard, PercentageMetricCard, PatientMetricCard } from "@/components/reports/metric-card"
+import { LineChart, BarChart, AreaChart } from "@/components/reports/minimal-chart"
+import { DataTable, FinancialDataTable, PatientDataTable } from "@/components/reports/data-table"
+import { PeriodComparator, FinancialPeriodComparator, TargetPeriodComparator } from "@/components/reports/period-comparator"
 
 // Import diferido en vez de importar siempre
 async function importExcelJS() {
@@ -255,6 +259,32 @@ interface ReportData {
     startDate: string | null
     endDate: string | null
     months: number
+  }
+  // Nuevas propiedades para KPIs y comparaciones
+  comparison?: {
+    current: {
+      revenue: number
+      appointments: number
+      patients: number
+    }
+    previous: {
+      revenue: number
+      appointments: number
+      patients: number
+    }
+  }
+  patientMetrics?: {
+    retentionRate: number
+    ltv: number
+    noShowRate: number
+    conversionRate: number
+  }
+  agingReport?: {
+    current: number
+    days31to60: number
+    days61to90: number
+    over90: number
+    total: number
   }
 }
 
@@ -483,15 +513,17 @@ export default function ReportsPage() {
       
       console.log('Fechas del período:', { startDate, endDate, periodInfo: reportData.periodInfo })
       
-      const [dailySalesRes, demographicsRes, insuranceRes] = await Promise.all([
+      const [dailySalesRes, demographicsRes, insuranceRes, kpisRes] = await Promise.all([
         fetch(`/api/reports/daily-sales?startDate=${startDate}&endDate=${endDate}`),
         fetch(`/api/reports/demographics?groupBy=${demographicsGroupBy}`),
-        fetch('/api/reports/insurance')
+        fetch('/api/reports/insurance'),
+        fetch(`/api/reports/kpis?startDate=${startDate}&endDate=${endDate}`)
       ])
 
       const dailySalesData = dailySalesRes.ok ? await dailySalesRes.json() : null
       const demographicsData = demographicsRes.ok ? await demographicsRes.json() : null
       const insuranceData = insuranceRes.ok ? await insuranceRes.json() : null
+      const kpisData = kpisRes.ok ? await kpisRes.json() : null
 
       const ExcelJS = await importExcelJS()
 
@@ -501,153 +533,175 @@ export default function ReportsPage() {
       workbook.created = new Date()
       workbook.modified = new Date()
 
+      // Importar utilidades de Excel
+      const {
+        createHeaderStyle,
+        createSubtitleStyle,
+        createDataStyle,
+        createCurrencyStyle,
+        createPercentStyle,
+        createSectionTitleStyle,
+        createTotalStyle,
+        createPositiveStyle,
+        createNegativeStyle,
+        createWarningStyle,
+        applyCollectionRateFormatting,
+        applyGrowthFormatting,
+        applyAgingFormatting,
+        applyPatientMetricFormatting,
+        getColumnWidth,
+        getNumberFormat
+      } = await import('@/lib/excel-utils')
+
       // === HOJA DE RESUMEN EJECUTIVO ===
       const resumenSheet = workbook.addWorksheet('Resumen Ejecutivo')
-      
-      // Estilos simplificados para mejor compatibilidad
-      const titleStyle = {
-        font: { bold: true, size: 16 },
-        alignment: { horizontal: 'center' as const, vertical: 'middle' as const }
-      }
-      
-      const subtitleStyle = {
-        font: { bold: true, size: 12 },
-        alignment: { horizontal: 'left' as const }
-      }
-      
-      const headerStyle = {
-        font: { bold: true, size: 11 },
-        alignment: { horizontal: 'center' as const, vertical: 'middle' as const }
-      }
-      
-      const currencyStyle = {
-        numFmt: '"$"#,##0.00'
-      }
-      
-      const percentStyle = {
-        numFmt: '0.0%"'
-      }
 
-      const dataStyle = {
-        font: { size: 10 },
-        alignment: { horizontal: 'center' as const, vertical: 'middle' as const }
-      }
-
+      // === HOJA 1: RESUMEN EJECUTIVO ===
       // Título principal
       resumenSheet.addRow([`🏥 REPORTE COMPLETO - ${businessName}`])
-      resumenSheet.getCell('A1').style = titleStyle
+      resumenSheet.getCell('A1').style = createSectionTitleStyle()
       resumenSheet.mergeCells('A1:H1')
       
       resumenSheet.addRow([''])
-      resumenSheet.addRow(['📅 Período:', `Últimos ${selectedPeriod} meses`])
+      resumenSheet.addRow(['📅 Período:', reportData.periodInfo?.label || `Últimos ${selectedPeriod} meses`])
       resumenSheet.addRow(['📊 Fecha de generación:', new Date().toLocaleDateString('es-ES')])
       resumenSheet.addRow([''])
 
-      // === RESUMEN FINANCIERO ===
-      resumenSheet.addRow(['💰 RESUMEN FINANCIERO'])
-      resumenSheet.getCell(`A${resumenSheet.rowCount}`).style = subtitleStyle
+      // === KPIs PRINCIPALES ===
+      resumenSheet.addRow(['💰 KPIs PRINCIPALES'])
+      resumenSheet.getCell(`A${resumenSheet.rowCount}`).style = createSubtitleStyle()
       resumenSheet.mergeCells(`A${resumenSheet.rowCount}:H${resumenSheet.rowCount}`)
       
       resumenSheet.addRow([''])
-      resumenSheet.addRow(['Métrica', 'Valor', 'Descripción'])
+      resumenSheet.addRow(['Métrica', 'Valor', 'Tendencia', 'Descripción'])
       resumenSheet.getRow(resumenSheet.rowCount).eachCell((cell, colNumber) => {
-        cell.style = headerStyle
+        cell.style = createHeaderStyle()
       })
       
-      resumenSheet.addRow(['Total Facturado', reportData.financial.totalRevenue, 'Ingresos totales del período'])
-      resumenSheet.addRow(['Facturas Pagadas', reportData.financial.paidInvoices, 'Facturas completadas'])
-      resumenSheet.addRow(['Facturas por Cobrar', reportData.financial.pendingInvoices + reportData.financial.partialInvoices, 'Facturas pendientes y parciales'])
-      resumenSheet.addRow(['Exoneraciones', reportData.financial.exoneratedInvoices, 'Facturas exoneradas'])
-      resumenSheet.addRow(['Monto Exonerado', reportData.financial.exoneratedAmount, 'Valor total exonerado'])
-      resumenSheet.addRow(['Pacientes Activos', reportData.totals.activePatients, 'Base de pacientes actual'])
-      resumenSheet.addRow(['Total Citas', reportData.totals.totalAppointments, 'Citas en el período'])
-      resumenSheet.addRow(['Tasa de Cobro', reportData.totals.collectionRate, 'Porcentaje de facturas pagadas'])
+      // Calcular tendencias
+      const revenueGrowth = reportData.comparison ? 
+        ((reportData.comparison.current.revenue - reportData.comparison.previous.revenue) / reportData.comparison.previous.revenue) * 100 : 0
+      const collectionRateGrowth = 0 // Se puede calcular si se tiene datos históricos
       
-      // Aplicar estilos a los datos
+      resumenSheet.addRow([
+        'Total Facturado', 
+        reportData.financial.totalRevenue, 
+        revenueGrowth,
+        'Ingresos totales del período'
+      ])
+      resumenSheet.addRow([
+        'Facturas Pagadas', 
+        reportData.financial.paidInvoices, 
+        '', 
+        'Facturas completadas'
+      ])
+      resumenSheet.addRow([
+        'Cuentas por Cobrar', 
+        reportData.financial.pendingInvoices + reportData.financial.partialInvoices, 
+        '', 
+        'Facturas pendientes y parciales'
+      ])
+      resumenSheet.addRow([
+        'Tasa de Cobro', 
+        reportData.totals.collectionRate, 
+        collectionRateGrowth,
+        'Porcentaje de facturas pagadas'
+      ])
+      resumenSheet.addRow([
+        'Pacientes Activos', 
+        reportData.totals.activePatients, 
+        '', 
+        'Base de pacientes actual'
+      ])
+      resumenSheet.addRow([
+        'Total Citas', 
+        reportData.totals.totalAppointments, 
+        '', 
+        'Citas en el período'
+      ])
+      
+      // Aplicar estilos y formato condicional
       for (let i = 6; i <= resumenSheet.rowCount; i++) {
         const row = resumenSheet.getRow(i)
         row.eachCell((cell, colNumber) => {
-          cell.style = dataStyle
-          if (colNumber === 2 && (i >= 6 && i <= 10)) {
-            cell.style = { ...dataStyle, ...currencyStyle }
+          cell.style = createDataStyle()
+          if (colNumber === 2 && (i >= 6 && i <= 9)) {
+            cell.style = { ...createCurrencyStyle(), ...cell.style }
           }
-          if (colNumber === 2 && i === resumenSheet.rowCount) {
-            cell.style = { ...dataStyle, ...percentStyle }
+          if (colNumber === 2 && i === 9) {
+            cell.style = { ...createPercentStyle(), ...cell.style }
           }
-        })
-      }
-
-      resumenSheet.addRow([''])
-      resumenSheet.addRow([''])
-
-      // === SERVICIOS MÁS POPULARES ===
-      if (reportData.financial.topServices.length > 0) {
-        resumenSheet.addRow(['🏆 SERVICIOS MÁS POPULARES'])
-        resumenSheet.getCell(`A${resumenSheet.rowCount}`).style = subtitleStyle
-        resumenSheet.mergeCells(`A${resumenSheet.rowCount}:H${resumenSheet.rowCount}`)
-        
-        resumenSheet.addRow([''])
-        resumenSheet.addRow(['Servicio', 'Ingresos', 'Cantidad', 'Promedio por Unidad'])
-        resumenSheet.getRow(resumenSheet.rowCount).eachCell((cell, colNumber) => {
-          cell.style = headerStyle
-        })
-        
-        reportData.financial.topServices.forEach(service => {
-          resumenSheet.addRow([
-            service.name,
-            service.revenue,
-            service.count,
-            service.count > 0 ? service.revenue / service.count : 0
-          ])
-        })
-        
-        // Aplicar estilos a los datos de servicios
-        for (let i = resumenSheet.rowCount - reportData.financial.topServices.length; i <= resumenSheet.rowCount; i++) {
-          const row = resumenSheet.getRow(i)
-          row.eachCell((cell, colNumber) => {
-            cell.style = dataStyle
-            if (colNumber >= 2 && colNumber <= 4) {
-              cell.style = { ...dataStyle, ...currencyStyle }
+          if (colNumber === 3 && i >= 6) {
+            const value = cell.value as number
+            if (typeof value === 'number') {
+              cell.style = applyGrowthFormatting(value)
             }
-          })
-        }
-        
-        resumenSheet.addRow([''])
-        resumenSheet.addRow([''])
+          }
+        })
       }
 
-      // === TENDENCIAS MENSUALES ===
-      if (reportData.financial.monthlyRevenue.length > 0) {
-        resumenSheet.addRow(['📈 TENDENCIAS MENSUALES'])
-        resumenSheet.getCell(`A${resumenSheet.rowCount}`).style = subtitleStyle
+      resumenSheet.addRow([''])
+      resumenSheet.addRow([''])
+
+      // === NUEVOS KPIs DE CONSULTORIO ===
+      if (kpisData) {
+        resumenSheet.addRow(['🏥 KPIs DE CONSULTORIO'])
+        resumenSheet.getCell(`A${resumenSheet.rowCount}`).style = createSubtitleStyle()
         resumenSheet.mergeCells(`A${resumenSheet.rowCount}:H${resumenSheet.rowCount}`)
         
         resumenSheet.addRow([''])
-        resumenSheet.addRow(['Mes', 'Ingresos', 'Tendencia'])
+        resumenSheet.addRow(['Métrica', 'Valor', 'Objetivo', 'Estado'])
         resumenSheet.getRow(resumenSheet.rowCount).eachCell((cell, colNumber) => {
-          cell.style = headerStyle
+          cell.style = createHeaderStyle()
         })
         
-        reportData.financial.monthlyRevenue.forEach((month, index) => {
-          const previousMonth = index > 0 ? reportData.financial.monthlyRevenue[index - 1].revenue : 0
-          const trend = previousMonth > 0 ? ((month.revenue - previousMonth) / previousMonth) * 100 : 0
-          resumenSheet.addRow([
-            month.month,
-            month.revenue,
-            trend
-          ])
-        })
+        resumenSheet.addRow([
+          'Tasa de Retención',
+          kpisData.patientMetrics?.retentionRate || 0,
+          80,
+          kpisData.patientMetrics?.retentionRate >= 80 ? '✅ Excelente' : 
+          kpisData.patientMetrics?.retentionRate >= 60 ? '⚠️ Regular' : '❌ Bajo'
+        ])
+        resumenSheet.addRow([
+          'LTV Promedio',
+          kpisData.patientMetrics?.ltv || 0,
+          500,
+          kpisData.patientMetrics?.ltv >= 500 ? '✅ Excelente' : 
+          kpisData.patientMetrics?.ltv >= 300 ? '⚠️ Regular' : '❌ Bajo'
+        ])
+        resumenSheet.addRow([
+          'Tasa de Ausentismo',
+          kpisData.patientMetrics?.noShowRate || 0,
+          10,
+          kpisData.patientMetrics?.noShowRate <= 10 ? '✅ Excelente' : 
+          kpisData.patientMetrics?.noShowRate <= 20 ? '⚠️ Regular' : '❌ Alto'
+        ])
+        resumenSheet.addRow([
+          'Tasa de Conversión',
+          kpisData.patientMetrics?.conversionRate || 0,
+          70,
+          kpisData.patientMetrics?.conversionRate >= 70 ? '✅ Excelente' : 
+          kpisData.patientMetrics?.conversionRate >= 50 ? '⚠️ Regular' : '❌ Bajo'
+        ])
         
-        // Aplicar estilos a los datos de tendencias
-        for (let i = resumenSheet.rowCount - reportData.financial.monthlyRevenue.length; i <= resumenSheet.rowCount; i++) {
+        // Aplicar estilos a KPIs
+        for (let i = resumenSheet.rowCount - 4; i <= resumenSheet.rowCount; i++) {
           const row = resumenSheet.getRow(i)
           row.eachCell((cell, colNumber) => {
-            cell.style = dataStyle
+            cell.style = createDataStyle()
             if (colNumber === 2) {
-              cell.style = { ...dataStyle, ...currencyStyle }
+              if (i === resumenSheet.rowCount - 3) { // LTV
+                cell.style = { ...createCurrencyStyle(), ...cell.style }
+              } else {
+                cell.style = { ...createPercentStyle(), ...cell.style }
+              }
             }
-            if (colNumber === 3) {
-              cell.style = { ...dataStyle, ...percentStyle }
+            if (colNumber === 2 && i >= resumenSheet.rowCount - 4) {
+              const metric = i === resumenSheet.rowCount - 4 ? 'retentionRate' :
+                           i === resumenSheet.rowCount - 3 ? 'ltv' :
+                           i === resumenSheet.rowCount - 2 ? 'noShowRate' : 'conversionRate'
+              const value = cell.value as number
+              cell.style = applyPatientMetricFormatting(metric, value)
             }
           })
         }
@@ -655,171 +709,237 @@ export default function ReportsPage() {
 
       // Ajustar ancho de columnas
       resumenSheet.columns = [
-        { width: 25 },
-        { width: 15 },
-        { width: 30 },
-        { width: 15 },
-        { width: 15 },
-        { width: 15 },
-        { width: 15 },
-        { width: 15 }
+        { width: getColumnWidth('extraWide') },
+        { width: getColumnWidth('currency') },
+        { width: getColumnWidth('percentage') },
+        { width: getColumnWidth('normal') }
       ]
 
-      // === HOJA DE VENTAS DEL PERÍODO ===
-      if (dailySalesData) {
-        const dailySheet = workbook.addWorksheet('Ventas del Periodo')
+      // === HOJA 2: ANÁLISIS FINANCIERO DETALLADO ===
+      const financialSheet = workbook.addWorksheet('Análisis Financiero')
+      
+      financialSheet.addRow(['💰 ANÁLISIS FINANCIERO DETALLADO'])
+      financialSheet.getCell('A1').style = createSectionTitleStyle()
+      financialSheet.mergeCells('A1:F1')
+      
+      financialSheet.addRow([''])
+      financialSheet.addRow(['Período:', reportData.periodInfo?.label || `Últimos ${selectedPeriod} meses`])
+      financialSheet.addRow(['Fecha de generación:', new Date().toLocaleDateString('es-ES')])
+      financialSheet.addRow([''])
+
+      // Ingresos mensuales
+      if (reportData.financial.monthlyRevenue.length > 0) {
+        financialSheet.addRow(['📈 INGRESOS MENSUALES'])
+        financialSheet.getCell(`A${financialSheet.rowCount}`).style = createSubtitleStyle()
+        financialSheet.mergeCells(`A${financialSheet.rowCount}:F${financialSheet.rowCount}`)
         
-        dailySheet.addRow(['📅 REPORTE DE VENTAS DEL PERÍODO'])
-        dailySheet.getCell('A1').style = titleStyle
-        dailySheet.mergeCells('A1:F1')
-        
-        dailySheet.addRow([''])
-        dailySheet.addRow(['Fecha:', dailySalesData.date])
-        dailySheet.addRow(['Total Facturado:', dailySalesData.summary.totalFacturado])
-        dailySheet.addRow(['Facturas Pagadas:', dailySalesData.summary.facturasPagadas])
-        dailySheet.addRow(['Facturas por Cobrar:', dailySalesData.summary.facturasPendientes + dailySalesData.summary.facturasParciales])
-        dailySheet.addRow(['Pendiente:', dailySalesData.summary.totalPendiente])
-        dailySheet.addRow(['Exoneraciones:', dailySalesData.summary.facturasExoneradas])
-        dailySheet.addRow(['Monto Exonerado:', dailySalesData.summary.totalExonerado])
-        
-        dailySheet.addRow([''])
-        dailySheet.addRow(['SERVICIOS DEL PERÍODO'])
-        dailySheet.getCell(`A${dailySheet.rowCount}`).style = subtitleStyle
-        dailySheet.mergeCells(`A${dailySheet.rowCount}:F${dailySheet.rowCount}`)
-        
-        dailySheet.addRow([''])
-        dailySheet.addRow(['Servicio', 'Cantidad', 'Precio Unitario', 'Total'])
-        dailySheet.getRow(dailySheet.rowCount).eachCell((cell, colNumber) => {
-          cell.style = headerStyle
+        financialSheet.addRow([''])
+        financialSheet.addRow(['Mes', 'Ingresos', 'Tendencia', 'Crecimiento'])
+        financialSheet.getRow(financialSheet.rowCount).eachCell((cell, colNumber) => {
+          cell.style = createHeaderStyle()
         })
         
-        if (dailySalesData.serviceBreakdown && Array.isArray(dailySalesData.serviceBreakdown)) {
-          dailySalesData.serviceBreakdown.forEach((service: any) => {
-            dailySheet.addRow([
-              service.name || 'Sin nombre',
-              service.totalQuantity || 0,
-              service.unitPrice || 0,
-              service.totalRevenue || 0
-            ])
-          })
-        }
-        
-        dailySheet.columns = [
-          { width: 30 },
-          { width: 15 },
-          { width: 15 },
-          { width: 15 },
-          { width: 15 },
-          { width: 15 }
-        ]
-      }
-
-      // === HOJA DEMOGRÁFICA ===
-      if (demographicsData) {
-        const demoSheet = workbook.addWorksheet('Demografico')
-        
-        demoSheet.addRow(['👥 ANÁLISIS DEMOGRÁFICO'])
-        demoSheet.getCell('A1').style = titleStyle
-        demoSheet.mergeCells('A1:F1')
-        
-        demoSheet.addRow([''])
-        demoSheet.addRow(['Total Pacientes:', demographicsData.summary.totalPatients])
-        demoSheet.addRow(['Total Citas:', demographicsData.summary.totalAppointments])
-        demoSheet.addRow(['Ingresos Totales:', demographicsData.summary.totalRevenue])
-        demoSheet.addRow(['Promedio por Paciente:', demographicsData.summary.avgRevenuePerPatient])
-        
-        demoSheet.addRow([''])
-        demoSheet.addRow([`DISTRIBUCIÓN POR ${demographicsGroupBy.toUpperCase()}`])
-        demoSheet.getCell(`A${demoSheet.rowCount}`).style = subtitleStyle
-        demoSheet.mergeCells(`A${demoSheet.rowCount}:F${demoSheet.rowCount}`)
-        
-        demoSheet.addRow([''])
-        demoSheet.addRow(['Categoría', 'Pacientes', 'Citas', 'Ingresos', 'Promedio'])
-        demoSheet.getRow(demoSheet.rowCount).eachCell((cell, colNumber) => {
-          cell.style = headerStyle
+        reportData.financial.monthlyRevenue.forEach((month, index) => {
+          const previousMonth = index > 0 ? reportData.financial.monthlyRevenue[index - 1].revenue : 0
+          const growth = previousMonth > 0 ? ((month.revenue - previousMonth) / previousMonth) * 100 : 0
+          financialSheet.addRow([
+            month.month,
+            month.revenue,
+            growth > 0 ? '↗️' : growth < 0 ? '↘️' : '→',
+            growth
+          ])
         })
         
-        if (demographicsData.chartData && Array.isArray(demographicsData.chartData)) {
-          demographicsData.chartData.forEach((item: any) => {
-            demoSheet.addRow([
-              item.group || 'Sin grupo',
-              item.count || 0,
-              item.appointments || 0,
-              item.revenue || 0,
-              item.avgRevenuePerPatient || 0
-            ])
+        // Aplicar estilos
+        for (let i = financialSheet.rowCount - reportData.financial.monthlyRevenue.length; i <= financialSheet.rowCount; i++) {
+          const row = financialSheet.getRow(i)
+          row.eachCell((cell, colNumber) => {
+            cell.style = createDataStyle()
+            if (colNumber === 2) {
+              cell.style = { ...createCurrencyStyle(), ...cell.style }
+            }
+            if (colNumber === 4) {
+              cell.style = { ...createPercentStyle(), ...cell.style }
+            }
           })
         }
-        
-        demoSheet.columns = [
-          { width: 25 },
-          { width: 15 },
-          { width: 15 },
-          { width: 15 },
-          { width: 15 },
-          { width: 15 }
-        ]
       }
 
-      // === HOJA DE SEGUROS ===
-      if (insuranceData) {
-        const insuranceSheet = workbook.addWorksheet('Seguros')
+      // Aging Report
+      if (reportData.agingReport) {
+        financialSheet.addRow([''])
+        financialSheet.addRow(['⏰ AGING REPORT - CUENTAS POR COBRAR'])
+        financialSheet.getCell(`A${financialSheet.rowCount}`).style = createSubtitleStyle()
+        financialSheet.mergeCells(`A${financialSheet.rowCount}:F${financialSheet.rowCount}`)
         
-        insuranceSheet.addRow(['🛡️ REPORTE DE SEGUROS'])
-        insuranceSheet.getCell('A1').style = titleStyle
-        insuranceSheet.mergeCells('A1:F1')
-        
-        insuranceSheet.addRow([''])
-        insuranceSheet.addRow(['Total Aseguradoras:', insuranceData.summary.totalInsurances])
-        insuranceSheet.addRow(['Pacientes Asegurados:', insuranceData.summary.totalInsuredPatients])
-        insuranceSheet.addRow(['Facturas con Seguro:', insuranceData.summary.totalInvoicesWithInsurance])
-        insuranceSheet.addRow(['Descuentos Totales:', insuranceData.summary.totalDiscounts])
-        
-        insuranceSheet.addRow([''])
-        insuranceSheet.addRow(['DETALLE POR ASEGURADORA'])
-        insuranceSheet.getCell(`A${insuranceSheet.rowCount}`).style = subtitleStyle
-        insuranceSheet.mergeCells(`A${insuranceSheet.rowCount}:F${insuranceSheet.rowCount}`)
-        
-        insuranceSheet.addRow([''])
-        insuranceSheet.addRow(['Aseguradora', 'Pacientes', 'Facturas', 'Descuentos', 'Servicios'])
-        insuranceSheet.getRow(insuranceSheet.rowCount).eachCell((cell, colNumber) => {
-          cell.style = headerStyle
+        financialSheet.addRow([''])
+        financialSheet.addRow(['Período', 'Monto', 'Porcentaje', 'Estado'])
+        financialSheet.getRow(financialSheet.rowCount).eachCell((cell, colNumber) => {
+          cell.style = createHeaderStyle()
         })
         
-        if (insuranceData.insuranceReports && Array.isArray(insuranceData.insuranceReports)) {
-          insuranceData.insuranceReports.forEach((insurance: any) => {
-            insuranceSheet.addRow([
-              insurance.insurance?.name || 'Sin nombre',
-              insurance.insurance?.patientCount || 0,
-              insurance.summary?.totalInvoices || 0,
-              insurance.summary?.totalDiscounts || 0,
-              insurance.serviceUsage?.length || 0
-            ])
+        const aging = reportData.agingReport
+        const total = aging.total
+        financialSheet.addRow(['0-30 días', aging.current, total > 0 ? (aging.current / total) * 100 : 0, '✅ Actual'])
+        financialSheet.addRow(['31-60 días', aging.days31to60, total > 0 ? (aging.days31to60 / total) * 100 : 0, '⚠️ Atención'])
+        financialSheet.addRow(['61-90 días', aging.days61to90, total > 0 ? (aging.days61to90 / total) * 100 : 0, '🔴 Crítico'])
+        financialSheet.addRow(['90+ días', aging.over90, total > 0 ? (aging.over90 / total) * 100 : 0, '🚨 Urgente'])
+        financialSheet.addRow(['TOTAL', total, 100, ''])
+        
+        // Aplicar estilos con formato condicional
+        for (let i = financialSheet.rowCount - 5; i <= financialSheet.rowCount; i++) {
+          const row = financialSheet.getRow(i)
+          row.eachCell((cell, colNumber) => {
+            cell.style = createDataStyle()
+            if (colNumber === 2 || colNumber === 3) {
+              cell.style = { ...createCurrencyStyle(), ...cell.style }
+            }
+            if (colNumber === 2 && i < financialSheet.rowCount) {
+              const days = i === financialSheet.rowCount - 4 ? 15 : 
+                         i === financialSheet.rowCount - 3 ? 45 :
+                         i === financialSheet.rowCount - 2 ? 75 : 120
+              const amount = cell.value as number
+              cell.style = applyAgingFormatting(days, amount)
+            }
           })
         }
-        
-        insuranceSheet.columns = [
-          { width: 25 },
-          { width: 15 },
-          { width: 15 },
-          { width: 15 },
-          { width: 15 },
-          { width: 15 }
-        ]
       }
 
-      // === HOJA DE MÉDICOS ===
+      financialSheet.columns = [
+        { width: getColumnWidth('normal') },
+        { width: getColumnWidth('currency') },
+        { width: getColumnWidth('percentage') },
+        { width: getColumnWidth('normal') }
+      ]
+
+      // === HOJA 3: SERVICIOS Y RENTABILIDAD ===
+      const servicesSheet = workbook.addWorksheet('Servicios y Rentabilidad')
+      
+      servicesSheet.addRow(['🏆 ANÁLISIS DE SERVICIOS'])
+      servicesSheet.getCell('A1').style = createSectionTitleStyle()
+      servicesSheet.mergeCells('A1:F1')
+      
+      servicesSheet.addRow([''])
+      servicesSheet.addRow(['Período:', reportData.periodInfo?.label || `Últimos ${selectedPeriod} meses`])
+      servicesSheet.addRow([''])
+
+      if (reportData.financial.topServices.length > 0) {
+        servicesSheet.addRow(['TOP 10 SERVICIOS MÁS POPULARES'])
+        servicesSheet.getCell(`A${servicesSheet.rowCount}`).style = createSubtitleStyle()
+        servicesSheet.mergeCells(`A${servicesSheet.rowCount}:F${servicesSheet.rowCount}`)
+        
+        servicesSheet.addRow([''])
+        servicesSheet.addRow(['#', 'Servicio', 'Ingresos', 'Cantidad', 'Promedio/Unidad', 'Participación'])
+        servicesSheet.getRow(servicesSheet.rowCount).eachCell((cell, colNumber) => {
+          cell.style = createHeaderStyle()
+        })
+        
+        const totalServiceRevenue = reportData.financial.topServices.reduce((sum, s) => sum + s.revenue, 0)
+        
+        reportData.financial.topServices.forEach((service, index) => {
+          const participation = totalServiceRevenue > 0 ? (service.revenue / totalServiceRevenue) * 100 : 0
+          servicesSheet.addRow([
+            index + 1,
+            service.name,
+            service.revenue,
+            service.count,
+            service.count > 0 ? service.revenue / service.count : 0,
+            participation
+          ])
+        })
+        
+        // Aplicar estilos
+        for (let i = servicesSheet.rowCount - reportData.financial.topServices.length; i <= servicesSheet.rowCount; i++) {
+          const row = servicesSheet.getRow(i)
+          row.eachCell((cell, colNumber) => {
+            cell.style = createDataStyle()
+            if (colNumber >= 3 && colNumber <= 5) {
+              cell.style = { ...createCurrencyStyle(), ...cell.style }
+            }
+            if (colNumber === 6) {
+              cell.style = { ...createPercentStyle(), ...cell.style }
+            }
+          })
+        }
+      }
+
+      servicesSheet.columns = [
+        { width: getColumnWidth('narrow') },
+        { width: getColumnWidth('extraWide') },
+        { width: getColumnWidth('currency') },
+        { width: getColumnWidth('number') },
+        { width: getColumnWidth('currency') },
+        { width: getColumnWidth('percentage') }
+      ]
+
+      // === HOJA 4: ANÁLISIS DE PACIENTES ===
+      const patientsSheet = workbook.addWorksheet('Análisis de Pacientes')
+      
+      patientsSheet.addRow(['👥 ANÁLISIS DE PACIENTES'])
+      patientsSheet.getCell('A1').style = createSectionTitleStyle()
+      patientsSheet.mergeCells('A1:F1')
+      
+      patientsSheet.addRow([''])
+      patientsSheet.addRow(['Período:', reportData.periodInfo?.label || `Últimos ${selectedPeriod} meses`])
+      patientsSheet.addRow([''])
+
+      // Métricas de pacientes
+      if (kpisData?.patientMetrics) {
+        patientsSheet.addRow(['📊 MÉTRICAS DE PACIENTES'])
+        patientsSheet.getCell(`A${patientsSheet.rowCount}`).style = createSubtitleStyle()
+        patientsSheet.mergeCells(`A${patientsSheet.rowCount}:F${patientsSheet.rowCount}`)
+        
+        patientsSheet.addRow([''])
+        patientsSheet.addRow(['Métrica', 'Valor', 'Objetivo', 'Estado'])
+        patientsSheet.getRow(patientsSheet.rowCount).eachCell((cell, colNumber) => {
+          cell.style = createHeaderStyle()
+        })
+        
+        const metrics = kpisData.patientMetrics
+        patientsSheet.addRow(['Total Pacientes', metrics.totalPatients, '', ''])
+        patientsSheet.addRow(['Pacientes Nuevos', metrics.newPatients, '', ''])
+        patientsSheet.addRow(['Pacientes Recurrentes', metrics.returningPatients, '', ''])
+        patientsSheet.addRow(['Tasa de Retención', metrics.retentionRate, 80, metrics.retentionRate >= 80 ? '✅' : '⚠️'])
+        patientsSheet.addRow(['Promedio Visitas/Paciente', metrics.avgVisitsPerPatient, 3, metrics.avgVisitsPerPatient >= 3 ? '✅' : '⚠️'])
+        patientsSheet.addRow(['LTV Promedio', metrics.ltv, 500, metrics.ltv >= 500 ? '✅' : '⚠️'])
+        patientsSheet.addRow(['Tasa de Ausentismo', metrics.noShowRate, 10, metrics.noShowRate <= 10 ? '✅' : '⚠️'])
+        patientsSheet.addRow(['Tasa de Conversión', metrics.conversionRate, 70, metrics.conversionRate >= 70 ? '✅' : '⚠️'])
+        
+        // Aplicar estilos
+        for (let i = patientsSheet.rowCount - 8; i <= patientsSheet.rowCount; i++) {
+          const row = patientsSheet.getRow(i)
+          row.eachCell((cell, colNumber) => {
+            cell.style = createDataStyle()
+            if (colNumber === 2 && i >= patientsSheet.rowCount - 4) {
+              if (i === patientsSheet.rowCount - 2) { // LTV
+                cell.style = { ...createCurrencyStyle(), ...cell.style }
+              } else {
+                cell.style = { ...createPercentStyle(), ...cell.style }
+              }
+            }
+          })
+        }
+      }
+
+      patientsSheet.columns = [
+        { width: getColumnWidth('wide') },
+        { width: getColumnWidth('currency') },
+        { width: getColumnWidth('number') },
+        { width: getColumnWidth('narrow') }
+      ]
+
+      // === HOJA 5: RENDIMIENTO POR MÉDICO ===
       if (reportData.doctorPatients.length > 0) {
-        const doctorsSheet = workbook.addWorksheet('Medicos')
+        const doctorsSheet = workbook.addWorksheet('Rendimiento por Médico')
         
         doctorsSheet.addRow(['👨‍⚕️ RENDIMIENTO POR MÉDICO'])
-        doctorsSheet.getCell('A1').style = titleStyle
-        doctorsSheet.mergeCells('A1:E1')
+        doctorsSheet.getCell('A1').style = createSectionTitleStyle()
+        doctorsSheet.mergeCells('A1:F1')
         
         doctorsSheet.addRow([''])
-        doctorsSheet.addRow(['Médico', 'Pacientes Únicos', 'Total Citas', 'Citas Completadas', 'Tasa de Éxito'])
+        doctorsSheet.addRow(['Médico', 'Pacientes Únicos', 'Total Citas', 'Citas Completadas', 'Tasa de Éxito', 'Ingresos'])
         doctorsSheet.getRow(doctorsSheet.rowCount).eachCell((cell, colNumber) => {
-          cell.style = headerStyle
+          cell.style = createHeaderStyle()
         })
         
         reportData.doctorPatients.forEach(doctor => {
@@ -829,7 +949,8 @@ export default function ReportsPage() {
             doctor.patientCount,
             doctor.appointmentCount,
             doctor.completedAppointments,
-            successRate
+            successRate,
+            0 // Se puede calcular si se tiene acceso a ingresos por médico
           ])
         })
         
@@ -837,29 +958,84 @@ export default function ReportsPage() {
         for (let i = 4; i <= doctorsSheet.rowCount; i++) {
           const row = doctorsSheet.getRow(i)
           row.eachCell((cell, colNumber) => {
-            cell.style = dataStyle
+            cell.style = createDataStyle()
             if (colNumber === 5) {
-              cell.style = { ...dataStyle, ...percentStyle }
+              cell.style = { ...createPercentStyle(), ...cell.style }
+            }
+            if (colNumber === 6) {
+              cell.style = { ...createCurrencyStyle(), ...cell.style }
             }
           })
         }
         
         doctorsSheet.columns = [
-          { width: 25 },
-          { width: 15 },
-          { width: 15 },
-          { width: 15 },
-          { width: 15 }
+          { width: getColumnWidth('wide') },
+          { width: getColumnWidth('number') },
+          { width: getColumnWidth('number') },
+          { width: getColumnWidth('number') },
+          { width: getColumnWidth('percentage') },
+          { width: getColumnWidth('currency') }
         ]
       }
 
-      // === HOJA DE EXONERACIONES ===
+      // === HOJA 6: SEGUROS MÉDICOS ===
+      if (insuranceData) {
+        const insuranceSheet = workbook.addWorksheet('Seguros Médicos')
+        
+        insuranceSheet.addRow(['🛡️ REPORTE DE SEGUROS MÉDICOS'])
+        insuranceSheet.getCell('A1').style = createSectionTitleStyle()
+        insuranceSheet.mergeCells('A1:F1')
+        
+        insuranceSheet.addRow([''])
+        insuranceSheet.addRow(['Resumen General'])
+        insuranceSheet.getCell(`A${insuranceSheet.rowCount}`).style = createSubtitleStyle()
+        insuranceSheet.mergeCells(`A${insuranceSheet.rowCount}:F${insuranceSheet.rowCount}`)
+        
+        insuranceSheet.addRow([''])
+        insuranceSheet.addRow(['Métrica', 'Valor'])
+        insuranceSheet.getRow(insuranceSheet.rowCount).eachCell((cell, colNumber) => {
+          cell.style = createHeaderStyle()
+        })
+        
+        insuranceSheet.addRow(['Total Aseguradoras', insuranceData.summary.totalInsurances])
+        insuranceSheet.addRow(['Pacientes Asegurados', insuranceData.summary.totalInsuredPatients])
+        insuranceSheet.addRow(['Facturas con Seguro', insuranceData.summary.totalInvoicesWithInsurance])
+        insuranceSheet.addRow(['Descuentos Totales', insuranceData.summary.totalDiscounts])
+        insuranceSheet.addRow(['Porcentaje de Ahorro', insuranceData.summary.savingsPercentage])
+        
+        // Aplicar estilos
+        for (let i = insuranceSheet.rowCount - 5; i <= insuranceSheet.rowCount; i++) {
+          const row = insuranceSheet.getRow(i)
+          row.eachCell((cell, colNumber) => {
+            cell.style = createDataStyle()
+            if (colNumber === 2 && i >= insuranceSheet.rowCount - 2) {
+              if (i === insuranceSheet.rowCount - 1) {
+                cell.style = { ...createPercentStyle(), ...cell.style }
+              } else {
+                cell.style = { ...createCurrencyStyle(), ...cell.style }
+              }
+            }
+          })
+        }
+        
+        insuranceSheet.columns = [
+          { width: getColumnWidth('wide') },
+          { width: getColumnWidth('currency') }
+        ]
+      }
+
+      // === HOJA 7: EXONERACIONES ===
       if (reportData.exonerations.exonerationsByReason.length > 0) {
         const exonerationsSheet = workbook.addWorksheet('Exoneraciones')
         
         exonerationsSheet.addRow(['🛡️ REPORTE DE EXONERACIONES'])
-        exonerationsSheet.getCell('A1').style = titleStyle
-        exonerationsSheet.mergeCells('A1:D1')
+        exonerationsSheet.getCell('A1').style = createSectionTitleStyle()
+        exonerationsSheet.mergeCells('A1:F1')
+        
+        exonerationsSheet.addRow([''])
+        exonerationsSheet.addRow(['Resumen'])
+        exonerationsSheet.getCell(`A${exonerationsSheet.rowCount}`).style = createSubtitleStyle()
+        exonerationsSheet.mergeCells(`A${exonerationsSheet.rowCount}:F${exonerationsSheet.rowCount}`)
         
         exonerationsSheet.addRow([''])
         exonerationsSheet.addRow(['Total Exoneraciones:', reportData.exonerations.totalExonerations])
@@ -867,22 +1043,25 @@ export default function ReportsPage() {
         
         exonerationsSheet.addRow([''])
         exonerationsSheet.addRow(['EXONERACIONES POR RAZÓN'])
-        exonerationsSheet.getCell(`A${exonerationsSheet.rowCount}`).style = subtitleStyle
-        exonerationsSheet.mergeCells(`A${exonerationsSheet.rowCount}:D${exonerationsSheet.rowCount}`)
+        exonerationsSheet.getCell(`A${exonerationsSheet.rowCount}`).style = createSubtitleStyle()
+        exonerationsSheet.mergeCells(`A${exonerationsSheet.rowCount}:F${exonerationsSheet.rowCount}`)
         
         exonerationsSheet.addRow([''])
-        exonerationsSheet.addRow(['Razón', 'Cantidad', 'Monto', 'Promedio'])
+        exonerationsSheet.addRow(['Razón', 'Cantidad', 'Monto', 'Promedio', 'Participación'])
         exonerationsSheet.getRow(exonerationsSheet.rowCount).eachCell((cell, colNumber) => {
-          cell.style = headerStyle
+          cell.style = createHeaderStyle()
         })
         
+        const totalExonerated = reportData.exonerations.totalExoneratedAmount
         reportData.exonerations.exonerationsByReason.forEach(reason => {
           const average = reason.count > 0 ? reason.amount / reason.count : 0
+          const participation = totalExonerated > 0 ? (reason.amount / totalExonerated) * 100 : 0
           exonerationsSheet.addRow([
             reason.reason,
             reason.count,
             reason.amount,
-            average
+            average,
+            participation
           ])
         })
         
@@ -890,57 +1069,22 @@ export default function ReportsPage() {
         for (let i = 6; i <= exonerationsSheet.rowCount; i++) {
           const row = exonerationsSheet.getRow(i)
           row.eachCell((cell, colNumber) => {
-            cell.style = dataStyle
+            cell.style = createDataStyle()
             if (colNumber >= 3 && colNumber <= 4) {
-              cell.style = { ...dataStyle, ...currencyStyle }
+              cell.style = { ...createCurrencyStyle(), ...cell.style }
+            }
+            if (colNumber === 5) {
+              cell.style = { ...createPercentStyle(), ...cell.style }
             }
           })
         }
         
         exonerationsSheet.columns = [
-          { width: 30 },
-          { width: 15 },
-          { width: 15 },
-          { width: 15 }
-        ]
-      }
-
-      // === HOJA DE TENDENCIAS DE ADQUISICIÓN ===
-      if (reportData.acquisitionTrends.length > 0) {
-        const acquisitionSheet = workbook.addWorksheet('Adquisicion')
-        
-        acquisitionSheet.addRow(['📈 TENDENCIAS DE ADQUISICIÓN'])
-        acquisitionSheet.getCell('A1').style = titleStyle
-        acquisitionSheet.mergeCells('A1:D1')
-        
-        acquisitionSheet.addRow([''])
-        acquisitionSheet.addRow(['Mes', 'Pacientes Nuevos', 'Pacientes Recurrentes', 'Total'])
-        acquisitionSheet.getRow(acquisitionSheet.rowCount).eachCell((cell, colNumber) => {
-          cell.style = headerStyle
-        })
-        
-        reportData.acquisitionTrends.forEach(trend => {
-          acquisitionSheet.addRow([
-            trend.month,
-            trend.newPatients,
-            trend.returningPatients,
-            trend.newPatients + trend.returningPatients
-          ])
-        })
-        
-        // Aplicar estilos
-        for (let i = 4; i <= acquisitionSheet.rowCount; i++) {
-          const row = acquisitionSheet.getRow(i)
-          row.eachCell((cell, colNumber) => {
-            cell.style = dataStyle
-          })
-        }
-        
-        acquisitionSheet.columns = [
-          { width: 20 },
-          { width: 20 },
-          { width: 20 },
-          { width: 15 }
+          { width: getColumnWidth('extraWide') },
+          { width: getColumnWidth('number') },
+          { width: getColumnWidth('currency') },
+          { width: getColumnWidth('currency') },
+          { width: getColumnWidth('percentage') }
         ]
       }
 
@@ -963,7 +1107,7 @@ export default function ReportsPage() {
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = `Reporte_Completo_KronusMed_${new Date().toISOString().split('T')[0]}.xlsx`
+        link.download = `Reporte_Completo_${businessName}_${new Date().toISOString().split('T')[0]}.xlsx`
         link.style.display = 'none'
         
         document.body.appendChild(link)
@@ -1076,71 +1220,82 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex flex-col gap-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Reportes</h1>
-            <p className="text-muted-foreground">
-              Análisis detallado del rendimiento financiero y operacional
-            </p>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row gap-3">
-            {/* Selector de período */}
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <Select value={useCustomRange ? "custom" : selectedPeriod.toString()} onValueChange={(value) => {
-                if (value === "custom") {
-                  setUseCustomRange(true)
-                } else {
-                  setUseCustomRange(false)
-                  setSelectedPeriod(parseInt(value))
-                }
-              }}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Seleccionar período" />
-                </SelectTrigger>
-                <SelectContent>
-                  {periodOptions.map(option => (
-                    <SelectItem key={option.value} value={option.value.toString()}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="custom">Rango personalizado</SelectItem>
-                </SelectContent>
-              </Select>
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-7xl mx-auto">
+          {/* Header Minimalista */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h1 className="text-2xl font-semibold text-gray-900 mb-2">
+                  📊 Reportes
+                </h1>
+                <p className="text-gray-600">
+                  Análisis y métricas del consultorio
+                </p>
+              </div>
+              
+              <div className="flex items-center space-x-3">
+                {/* Selector de período */}
+                <div className="flex items-center space-x-2">
+                  <Calendar className="h-4 w-4 text-gray-500" />
+                  <Select 
+                    value={useCustomRange ? "custom" : selectedPeriod.toString()} 
+                    onValueChange={(value) => {
+                      if (value === "custom") {
+                        setUseCustomRange(true)
+                      } else {
+                        setUseCustomRange(false)
+                        setSelectedPeriod(parseInt(value))
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-[180px] border-gray-300">
+                      <SelectValue placeholder="Período" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {periodOptions.map(option => (
+                        <SelectItem key={option.value} value={option.value.toString()}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="custom">Rango personalizado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Botón de exportar */}
+                <Button 
+                  onClick={exportFullReport}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2"
+                  disabled={isLoading}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Exportar
+                </Button>
+              </div>
             </div>
 
             {/* Selector de rango personalizado */}
             {useCustomRange && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center space-x-3 p-4 bg-white rounded-lg border border-gray-200">
+                <span className="text-sm text-gray-600">Rango personalizado:</span>
                 <input
                   type="date"
                   value={dateRange?.start || ''}
                   onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                  className="px-3 py-2 border rounded-md text-sm"
-                  placeholder="Fecha inicio"
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
-                <span className="text-muted-foreground">a</span>
+                <span className="text-gray-500">a</span>
                 <input
                   type="date"
                   value={dateRange?.end || ''}
                   onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                  className="px-3 py-2 border rounded-md text-sm"
-                  placeholder="Fecha fin"
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
             )}
-            
-            {/* Botón de exportar */}
-            <Button onClick={exportFullReport} className="flex items-center gap-2">
-              <FileSpreadsheet className="h-4 w-4" />
-              Exportar Excel
-            </Button>
           </div>
-        </div>
 
         {/* Información del período */}
         {reportData && (
@@ -1205,86 +1360,133 @@ export default function ReportsPage() {
           </div>
         )}
 
-        {/* Métricas principales */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-blue-700">Total Ingresos</CardTitle>
-              <DollarSign className="h-4 w-4 text-blue-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-900">${reportData.financial.totalRevenue.toLocaleString()}</div>
-              <p className="text-xs text-blue-600">
-                Últimos {selectedPeriod} meses
-              </p>
-            </CardContent>
-          </Card>
+          {/* Resumen Ejecutivo */}
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Resumen Ejecutivo</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <FinancialMetricCard
+                title="Total Facturado"
+                value={reportData.financial.totalRevenue}
+                description="Ingresos totales del período"
+                trend={reportData.comparison ? {
+                  value: ((reportData.comparison.current.revenue - reportData.comparison.previous.revenue) / reportData.comparison.previous.revenue) * 100,
+                  direction: reportData.comparison.current.revenue > reportData.comparison.previous.revenue ? 'up' : 'down'
+                } : undefined}
+                icon={<DollarSign className="h-5 w-5" />}
+              />
+              
+              <PercentageMetricCard
+                title="Tasa de Cobro"
+                value={reportData.totals.collectionRate}
+                description="Porcentaje de facturas pagadas"
+                target={85}
+                icon={<CheckCircle className="h-5 w-5" />}
+              />
+              
+              <FinancialMetricCard
+                title="Cuentas por Cobrar"
+                value={reportData.financial.pendingInvoices + reportData.financial.partialInvoices}
+                description="Facturas pendientes y parciales"
+                icon={<AlertTriangle className="h-5 w-5" />}
+              />
+              
+              <PatientMetricCard
+                title="Pacientes Activos"
+                value={reportData.totals.activePatients}
+                description="Base de pacientes actual"
+                icon={<Users className="h-5 w-5" />}
+              />
+            </div>
+          </div>
 
-          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-green-700">Facturas Pagadas</CardTitle>
-              <CheckCircle className="h-4 w-4 text-green-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-900">{reportData.financial.paidInvoices}</div>
-              <p className="text-xs text-green-600">
-                {reportData.totals.collectionRate.toFixed(1)}% tasa de cobro
-              </p>
-            </CardContent>
-          </Card>
+          {/* KPIs de Consultorio */}
+          {reportData.patientMetrics && (
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-6">KPIs de Consultorio</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <PercentageMetricCard
+                  title="Tasa de Retención"
+                  value={reportData.patientMetrics.retentionRate}
+                  description="Pacientes que regresan"
+                  target={80}
+                  icon={<Heart className="h-5 w-5" />}
+                />
+                
+                <FinancialMetricCard
+                  title="LTV Promedio"
+                  value={reportData.patientMetrics.ltv}
+                  description="Valor promedio por paciente"
+                  icon={<Target className="h-5 w-5" />}
+                />
+                
+                <PercentageMetricCard
+                  title="Tasa de Ausentismo"
+                  value={reportData.patientMetrics.noShowRate}
+                  description="Pacientes que no asisten"
+                  target={10}
+                  icon={<Clock className="h-5 w-5" />}
+                />
+                
+                <PercentageMetricCard
+                  title="Tasa de Conversión"
+                  value={reportData.patientMetrics.conversionRate}
+                  description="Primera cita → paciente recurrente"
+                  target={70}
+                  icon={<TrendingUp className="h-5 w-5" />}
+                />
+              </div>
+            </div>
+          )}
 
-          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-orange-700">Facturas por Cobrar</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-orange-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-orange-900">{reportData.financial.pendingInvoices + reportData.financial.partialInvoices}</div>
-              <p className="text-xs text-orange-600">
-                Por cobrar
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-red-700">Exoneraciones</CardTitle>
-              <Shield className="h-4 w-4 text-red-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-red-900">{reportData.financial.exoneratedInvoices}</div>
-              <p className="text-xs text-red-600">
-                ${reportData.financial.exoneratedAmount.toLocaleString()} exonerado
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-purple-700">Citas</CardTitle>
-              <Stethoscope className="h-4 w-4 text-purple-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-purple-900">{reportData.totals.totalAppointments}</div>
-              <p className="text-xs text-purple-600">
-                En el período seleccionado
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-indigo-700">Pacientes Activos</CardTitle>
-              <Users className="h-4 w-4 text-indigo-600" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-indigo-900">{reportData.totals.activePatients}</div>
-              <p className="text-xs text-indigo-600">
-                Base de pacientes actual
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+          {/* Comparación de Períodos */}
+          {reportData.comparison && (
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold text-gray-900 mb-6">Comparación de Períodos</h2>
+              <FinancialPeriodComparator
+                title="Análisis Comparativo"
+                description="Comparación entre el período actual y el anterior"
+                currentPeriod={{
+                  label: reportData.periodInfo?.label || `Últimos ${selectedPeriod} meses`,
+                  startDate: reportData.periodInfo?.startDate || '',
+                  endDate: reportData.periodInfo?.endDate || ''
+                }}
+                previousPeriod={{
+                  label: `Período anterior`,
+                  startDate: '',
+                  endDate: ''
+                }}
+                metrics={[
+                  {
+                    name: 'Ingresos',
+                    current: reportData.comparison.current.revenue,
+                    previous: reportData.comparison.previous.revenue,
+                    change: reportData.comparison.current.revenue - reportData.comparison.previous.revenue,
+                    changePercent: ((reportData.comparison.current.revenue - reportData.comparison.previous.revenue) / reportData.comparison.previous.revenue) * 100,
+                    trend: reportData.comparison.current.revenue > reportData.comparison.previous.revenue ? 'up' : 'down',
+                    format: 'currency'
+                  },
+                  {
+                    name: 'Citas',
+                    current: reportData.comparison.current.appointments,
+                    previous: reportData.comparison.previous.appointments,
+                    change: reportData.comparison.current.appointments - reportData.comparison.previous.appointments,
+                    changePercent: ((reportData.comparison.current.appointments - reportData.comparison.previous.appointments) / reportData.comparison.previous.appointments) * 100,
+                    trend: reportData.comparison.current.appointments > reportData.comparison.previous.appointments ? 'up' : 'down',
+                    format: 'number'
+                  },
+                  {
+                    name: 'Pacientes',
+                    current: reportData.comparison.current.patients,
+                    previous: reportData.comparison.previous.patients,
+                    change: reportData.comparison.current.patients - reportData.comparison.previous.patients,
+                    changePercent: ((reportData.comparison.current.patients - reportData.comparison.previous.patients) / reportData.comparison.previous.patients) * 100,
+                    trend: reportData.comparison.current.patients > reportData.comparison.previous.patients ? 'up' : 'down',
+                    format: 'number'
+                  }
+                ]}
+              />
+            </div>
+          )}
 
         {/* Tabs de reportes */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
@@ -2223,6 +2425,7 @@ export default function ReportsPage() {
             )}
           </TabsContent>
         </Tabs>
+        </div>
       </div>
     </div>
   )
