@@ -38,8 +38,7 @@ export interface UseServicesPaginationReturn {
   setCurrentPage: (page: number) => void
   refetch: () => Promise<void>
   refetchAndGoToFirstPage: () => Promise<void>
-  addOptimisticService: (service: Service) => void
-  removeOptimisticService: (serviceId: string) => void
+  forceRefresh: () => Promise<void>
   goToPage: (page: number) => void
   nextPage: () => void
   prevPage: () => void
@@ -281,45 +280,52 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
     }
   }, [buildUrl, searchTerm, categoryFilter, statusFilter])
 
-  // Función para actualización optimista (agregar servicio temporalmente)
-  const addOptimisticService = useCallback((newService: Service) => {
-    console.log("➕ Agregando servicio optimista:", newService.name)
+  // Función para forzar recarga completa
+  const forceRefresh = useCallback(async () => {
+    console.log("🔄 Forzando recarga completa...")
+    setIsLoading(true)
+    setError(null)
     
-    // Agregar el servicio al inicio de la lista
-    setServices(prevServices => {
-      const updated = [newService, ...prevServices]
-      console.log(`📊 Servicios actualizados: ${updated.length} servicios`)
-      return updated
-    })
-    
-    // Actualizar paginación
-    setPagination(prevPagination => {
-      const updated = {
-        ...prevPagination,
-        total: prevPagination.total + 1
+    try {
+      // Limpiar caché del navegador forzando timestamp único
+      const timestamp = Date.now()
+      const url = `/api/services?page=1&limit=${initialLimit}&_t=${timestamp}`
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`)
       }
-      console.log(`📊 Total actualizado: ${updated.total}`)
-      return updated
-    })
-    
-    // Forzar re-render
-    setRenderKey(prev => prev + 1)
-  }, [])
-
-  // Función para remover actualización optimista (en caso de error)
-  const removeOptimisticService = useCallback((serviceId: string) => {
-    console.log("Removiendo servicio optimista:", serviceId)
-    
-    setServices(prevServices => 
-      prevServices.filter(service => service.id !== serviceId)
-    )
-    
-    // Revertir paginación
-    setPagination(prevPagination => ({
-      ...prevPagination,
-      total: Math.max(0, prevPagination.total - 1)
-    }))
-  }, [])
+      
+      const data = await response.json()
+      
+      if (!data.services || !Array.isArray(data.services) || !data.pagination) {
+        throw new Error("Formato de respuesta inválido")
+      }
+      
+      console.log(`✅ Recarga forzada: ${data.services.length} servicios`)
+      console.log(`📋 Servicios:`, data.services.map(s => s.name))
+      
+      setServices(data.services)
+      setPagination(data.pagination)
+      setCurrentPage(1)
+      setRenderKey(prev => prev + 1)
+      
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al forzar recarga'
+      console.error("Error al forzar recarga:", errorMessage)
+      setError(errorMessage)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [initialLimit])
 
   return {
     services,
@@ -336,8 +342,7 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
     setCurrentPage,
     refetch,
     refetchAndGoToFirstPage,
-    addOptimisticService,
-    removeOptimisticService,
+    forceRefresh,
     goToPage,
     nextPage,
     prevPage,

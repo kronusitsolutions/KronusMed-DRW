@@ -105,8 +105,7 @@ export default function ServicesPage() {
     setStatusFilter,
     refetch,
     refetchAndGoToFirstPage,
-    addOptimisticService,
-    removeOptimisticService,
+    forceRefresh,
     renderKey
   } = useServicesPagination(20)
 
@@ -165,31 +164,9 @@ export default function ServicesPage() {
   }, [session, status, router])
 
   const handleCreateService = async (data: ServiceForm) => {
-    // Crear servicio optimista temporal
-    const tempServiceId = `temp_${Date.now()}`
-    const optimisticService: Service = {
-      id: tempServiceId,
-      name: data.name,
-      description: data.description,
-      price: data.price,
-      priceType: data.priceType,
-      category: data.category,
-      isActive: data.isActive,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-
     try {
-      console.log("🚀 Iniciando creación de servicio:", data.name)
+      console.log("🚀 Creando servicio:", data.name)
       
-      // Mostrar servicio inmediatamente (actualización optimista)
-      addOptimisticService(optimisticService)
-      console.log("✅ Servicio optimista agregado")
-      
-      toast.success("Servicio creado exitosamente")
-      setIsAddDialogOpen(false)
-      reset()
-
       const response = await fetch('/api/services', {
         method: 'POST',
         headers: {
@@ -200,38 +177,35 @@ export default function ServicesPage() {
 
       if (response.ok) {
         const createdService = await response.json()
-        console.log("✅ Servicio creado en servidor:", createdService.name)
+        console.log("✅ Servicio creado:", createdService.name)
         
-        // Remover servicio optimista y agregar el real
-        removeOptimisticService(tempServiceId)
-        addOptimisticService(createdService)
-        console.log("🔄 Servicio optimista reemplazado por el real")
+        toast.success("Servicio creado exitosamente")
+        setIsAddDialogOpen(false)
+        reset()
         
-        // Recarga inmediata para asegurar consistencia
-        console.log("🔄 Iniciando recarga inmediata...")
-        await refetchAndGoToFirstPage()
-        
-        // Actualizar estadísticas globales después de recargar la lista
-        console.log("📊 Actualizando estadísticas...")
+        // Recarga forzada inmediata
+        console.log("🔄 Recarga forzada inmediata...")
+        await forceRefresh()
         await fetchGlobalStats()
         
-        // Recarga adicional después de un delay para asegurar sincronización completa
+        // Recarga adicional con delay para asegurar sincronización
         setTimeout(async () => {
-          console.log("🔄 Recarga final de verificación...")
-          await refetchAndGoToFirstPage()
+          console.log("🔄 Recarga de verificación...")
+          await forceRefresh()
+        }, 1500)
+        
+        // Recarga final para garantizar consistencia
+        setTimeout(async () => {
+          console.log("🔄 Recarga final...")
+          await forceRefresh()
           await fetchGlobalStats()
-        }, 2000)
+        }, 3000)
+        
       } else {
-        // Error: remover servicio optimista
-        console.log("❌ Error en creación - removiendo servicio optimista")
-        removeOptimisticService(tempServiceId)
         const errorData = await response.json()
         toast.error(errorData.error || "Error al crear el servicio")
       }
     } catch (error) {
-      // Error: remover servicio optimista
-      console.log("❌ Error en creación - removiendo servicio optimista")
-      removeOptimisticService(tempServiceId)
       console.error("Error al crear servicio:", error)
       toast.error("Error al crear el servicio")
     }
@@ -389,7 +363,7 @@ export default function ServicesPage() {
             variant="outline"
             onClick={async () => {
               console.log("🔄 Recarga manual iniciada")
-              await refetchAndGoToFirstPage()
+              await forceRefresh()
               await fetchGlobalStats()
               console.log("✅ Recarga manual completada")
             }}
