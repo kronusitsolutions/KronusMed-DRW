@@ -260,11 +260,14 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
         throw new Error("Formato de respuesta inválido")
       }
       
-      console.log(`Servicios refrescados (página 1, sin caché): ${data.services.length} de ${data.pagination.total}`)
+      console.log(`✅ Servicios refrescados (página 1, sin caché): ${data.services.length} de ${data.pagination.total}`)
+      console.log(`📋 Servicios recibidos:`, data.services.map(s => s.name))
       
       setServices(data.services)
       setPagination(data.pagination)
       setCurrentPage(1)
+      
+      console.log(`📊 Estado actualizado - Servicios: ${data.services.length}, Total: ${data.pagination.total}`)
       
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error desconocido al refrescar servicios'
@@ -277,16 +280,24 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
 
   // Función para actualización optimista (agregar servicio temporalmente)
   const addOptimisticService = useCallback((newService: Service) => {
-    console.log("Agregando servicio optimista:", newService.name)
+    console.log("➕ Agregando servicio optimista:", newService.name)
     
     // Agregar el servicio al inicio de la lista
-    setServices(prevServices => [newService, ...prevServices])
+    setServices(prevServices => {
+      const updated = [newService, ...prevServices]
+      console.log(`📊 Servicios actualizados: ${updated.length} servicios`)
+      return updated
+    })
     
     // Actualizar paginación
-    setPagination(prevPagination => ({
-      ...prevPagination,
-      total: prevPagination.total + 1
-    }))
+    setPagination(prevPagination => {
+      const updated = {
+        ...prevPagination,
+        total: prevPagination.total + 1
+      }
+      console.log(`📊 Total actualizado: ${updated.total}`)
+      return updated
+    })
   }, [])
 
   // Función para remover actualización optimista (en caso de error)

@@ -37,8 +37,11 @@ export async function GET(request: NextRequest) {
     // Intentar obtener del caché primero
     const cachedResult = cache.get(cacheKey)
     if (cachedResult) {
+      console.log(`📦 Cache hit para servicios: ${cacheKey}`)
       return NextResponse.json(cachedResult)
     }
+    
+    console.log(`🔄 Cache miss - cargando servicios desde BD: ${cacheKey}`)
 
     // Construir condiciones de búsqueda
     const whereCondition: any = {}
@@ -232,9 +235,14 @@ export async function POST(request: NextRequest) {
     })
     console.log("✅ Servicio creado:", service.id)
 
-    // Invalidar caché
+    // Invalidar caché de manera más agresiva
     console.log("🗑️ Invalidando caché...")
     ServiceCache.invalidateServices()
+    
+    // Invalidar también caché específico por rol y página
+    const userCacheKey = `services:${session.user.role}:1:20::all:all`
+    cache.delete(userCacheKey)
+    console.log(`🗑️ Caché invalidado para: ${userCacheKey}`)
 
     console.log("🎉 Servicio creado exitosamente")
     return NextResponse.json(service, { status: 201 })

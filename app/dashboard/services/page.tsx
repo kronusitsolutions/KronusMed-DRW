@@ -179,8 +179,12 @@ export default function ServicesPage() {
     }
 
     try {
+      console.log("🚀 Iniciando creación de servicio:", data.name)
+      
       // Mostrar servicio inmediatamente (actualización optimista)
       addOptimisticService(optimisticService)
+      console.log("✅ Servicio optimista agregado")
+      
       toast.success("Servicio creado exitosamente")
       setIsAddDialogOpen(false)
       reset()
@@ -195,29 +199,37 @@ export default function ServicesPage() {
 
       if (response.ok) {
         const createdService = await response.json()
+        console.log("✅ Servicio creado en servidor:", createdService.name)
         
         // Remover servicio optimista y agregar el real
         removeOptimisticService(tempServiceId)
         addOptimisticService(createdService)
-        
-        // Actualizar estadísticas globales
-        await fetchGlobalStats()
+        console.log("🔄 Servicio optimista reemplazado por el real")
         
         // Recarga inmediata para asegurar consistencia
+        console.log("🔄 Iniciando recarga inmediata...")
         await refetchAndGoToFirstPage()
+        
+        // Actualizar estadísticas globales después de recargar la lista
+        console.log("📊 Actualizando estadísticas...")
+        await fetchGlobalStats()
         
         // Recarga adicional después de un delay para asegurar sincronización completa
         setTimeout(async () => {
+          console.log("🔄 Recarga final de verificación...")
           await refetchAndGoToFirstPage()
+          await fetchGlobalStats()
         }, 2000)
       } else {
         // Error: remover servicio optimista
+        console.log("❌ Error en creación - removiendo servicio optimista")
         removeOptimisticService(tempServiceId)
         const errorData = await response.json()
         toast.error(errorData.error || "Error al crear el servicio")
       }
     } catch (error) {
       // Error: remover servicio optimista
+      console.log("❌ Error en creación - removiendo servicio optimista")
       removeOptimisticService(tempServiceId)
       console.error("Error al crear servicio:", error)
       toast.error("Error al crear el servicio")
@@ -375,8 +387,10 @@ export default function ServicesPage() {
           <Button
             variant="outline"
             onClick={async () => {
+              console.log("🔄 Recarga manual iniciada")
               await refetchAndGoToFirstPage()
               await fetchGlobalStats()
+              console.log("✅ Recarga manual completada")
             }}
             disabled={isLoading}
           >
