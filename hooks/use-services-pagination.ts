@@ -139,6 +139,12 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
     }
   }, [buildUrl, initialLimit])
 
+  // Carga inicial de servicios
+  useEffect(() => {
+    console.log("🔄 Carga inicial de servicios")
+    fetchServices(1, searchTerm, categoryFilter, statusFilter)
+  }, []) // Solo al montar el componente
+
   // Debounce para búsqueda
   useEffect(() => {
     const timeoutId = setTimeout(() => {

@@ -203,10 +203,13 @@ export default function ServicesPage() {
         // Actualizar estadísticas globales
         await fetchGlobalStats()
         
-        // Recarga final para asegurar consistencia
+        // Recarga inmediata para asegurar consistencia
+        await refetchAndGoToFirstPage()
+        
+        // Recarga adicional después de un delay para asegurar sincronización completa
         setTimeout(async () => {
           await refetchAndGoToFirstPage()
-        }, 1000)
+        }, 2000)
       } else {
         // Error: remover servicio optimista
         removeOptimisticService(tempServiceId)
@@ -367,6 +370,22 @@ export default function ServicesPage() {
             ) : (
               "Migrar IDs"
             )}
+          </Button>
+          
+          <Button
+            variant="outline"
+            onClick={async () => {
+              await refetchAndGoToFirstPage()
+              await fetchGlobalStats()
+            }}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Settings className="mr-2 h-4 w-4" />
+            )}
+            Recargar
           </Button>
           
           <Button onClick={() => setIsAddDialogOpen(true)}>
