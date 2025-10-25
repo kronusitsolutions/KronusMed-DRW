@@ -38,6 +38,8 @@ export interface UseServicesPaginationReturn {
   setCurrentPage: (page: number) => void
   refetch: () => Promise<void>
   refetchAndGoToFirstPage: () => Promise<void>
+  addOptimisticService: (service: Service) => void
+  removeOptimisticService: (serviceId: string) => void
   goToPage: (page: number) => void
   nextPage: () => void
   prevPage: () => void
@@ -174,15 +176,25 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
 
   // Función de recarga
   const refetch = useCallback(async () => {
-    // Forzar recarga inmediata sin debounce
+    // Forzar recarga inmediata sin debounce y sin caché
     setIsLoading(true)
     setError(null)
     
     try {
       const url = buildUrl(currentPage, searchTerm, categoryFilter, statusFilter)
-      console.log(`Refrescando servicios: ${url}`)
+      console.log(`Refrescando servicios (sin caché): ${url}`)
       
-      const response = await fetch(url)
+      // Forzar recarga sin caché agregando timestamp
+      const urlWithTimestamp = `${url}&_t=${Date.now()}`
+      
+      const response = await fetch(urlWithTimestamp, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      })
       
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`)
@@ -195,7 +207,7 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
         throw new Error("Formato de respuesta inválido")
       }
       
-      console.log(`Servicios refrescados: ${data.services.length} de ${data.pagination.total}`)
+      console.log(`Servicios refrescados (sin caché): ${data.services.length} de ${data.pagination.total}`)
       
       setServices(data.services)
       setPagination(data.pagination)
@@ -217,9 +229,19 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
     
     try {
       const url = buildUrl(1, searchTerm, categoryFilter, statusFilter)
-      console.log(`Refrescando servicios y yendo a página 1: ${url}`)
+      console.log(`Refrescando servicios y yendo a página 1 (sin caché): ${url}`)
       
-      const response = await fetch(url)
+      // Forzar recarga sin caché agregando timestamp
+      const urlWithTimestamp = `${url}&_t=${Date.now()}`
+      
+      const response = await fetch(urlWithTimestamp, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      })
       
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`)
@@ -232,7 +254,7 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
         throw new Error("Formato de respuesta inválido")
       }
       
-      console.log(`Servicios refrescados (página 1): ${data.services.length} de ${data.pagination.total}`)
+      console.log(`Servicios refrescados (página 1, sin caché): ${data.services.length} de ${data.pagination.total}`)
       
       setServices(data.services)
       setPagination(data.pagination)
@@ -246,6 +268,35 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
       setIsLoading(false)
     }
   }, [buildUrl, searchTerm, categoryFilter, statusFilter])
+
+  // Función para actualización optimista (agregar servicio temporalmente)
+  const addOptimisticService = useCallback((newService: Service) => {
+    console.log("Agregando servicio optimista:", newService.name)
+    
+    // Agregar el servicio al inicio de la lista
+    setServices(prevServices => [newService, ...prevServices])
+    
+    // Actualizar paginación
+    setPagination(prevPagination => ({
+      ...prevPagination,
+      total: prevPagination.total + 1
+    }))
+  }, [])
+
+  // Función para remover actualización optimista (en caso de error)
+  const removeOptimisticService = useCallback((serviceId: string) => {
+    console.log("Removiendo servicio optimista:", serviceId)
+    
+    setServices(prevServices => 
+      prevServices.filter(service => service.id !== serviceId)
+    )
+    
+    // Revertir paginación
+    setPagination(prevPagination => ({
+      ...prevPagination,
+      total: Math.max(0, prevPagination.total - 1)
+    }))
+  }, [])
 
   return {
     services,
@@ -262,6 +313,8 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
     setCurrentPage,
     refetch,
     refetchAndGoToFirstPage,
+    addOptimisticService,
+    removeOptimisticService,
     goToPage,
     nextPage,
     prevPage,

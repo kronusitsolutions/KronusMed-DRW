@@ -104,7 +104,9 @@ export default function ServicesPage() {
     statusFilter,
     setStatusFilter,
     refetch,
-    refetchAndGoToFirstPage
+    refetchAndGoToFirstPage,
+    addOptimisticService,
+    removeOptimisticService
   } = useServicesPagination(20)
 
   // Estados para estadísticas globales
@@ -162,7 +164,27 @@ export default function ServicesPage() {
   }, [session, status, router])
 
   const handleCreateService = async (data: ServiceForm) => {
+    // Crear servicio optimista temporal
+    const tempServiceId = `temp_${Date.now()}`
+    const optimisticService: Service = {
+      id: tempServiceId,
+      name: data.name,
+      description: data.description,
+      price: data.price,
+      priceType: data.priceType,
+      category: data.category,
+      isActive: data.isActive,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+
     try {
+      // Mostrar servicio inmediatamente (actualización optimista)
+      addOptimisticService(optimisticService)
+      toast.success("Servicio creado exitosamente")
+      setIsAddDialogOpen(false)
+      reset()
+
       const response = await fetch('/api/services', {
         method: 'POST',
         headers: {
@@ -172,27 +194,28 @@ export default function ServicesPage() {
       })
 
       if (response.ok) {
-        toast.success("Servicio creado exitosamente")
-        setIsAddDialogOpen(false)
-        reset()
+        const createdService = await response.json()
         
-        // Actualizar la lista de servicios y ir a la primera página
-        // para mostrar el servicio recién creado
-        await refetchAndGoToFirstPage()
+        // Remover servicio optimista y agregar el real
+        removeOptimisticService(tempServiceId)
+        addOptimisticService(createdService)
         
         // Actualizar estadísticas globales
         await fetchGlobalStats()
         
-        // Forzar una segunda actualización después de un breve delay
-        // para asegurar que el caché se haya invalidado
+        // Recarga final para asegurar consistencia
         setTimeout(async () => {
           await refetchAndGoToFirstPage()
-        }, 500)
+        }, 1000)
       } else {
+        // Error: remover servicio optimista
+        removeOptimisticService(tempServiceId)
         const errorData = await response.json()
         toast.error(errorData.error || "Error al crear el servicio")
       }
     } catch (error) {
+      // Error: remover servicio optimista
+      removeOptimisticService(tempServiceId)
       console.error("Error al crear servicio:", error)
       toast.error("Error al crear el servicio")
     }
