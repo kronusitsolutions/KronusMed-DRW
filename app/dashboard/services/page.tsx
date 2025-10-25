@@ -106,7 +106,8 @@ export default function ServicesPage() {
     refetch,
     addService,
     updateService,
-    removeService
+    removeService,
+    forceUpdate
   } = useServicesPagination(20)
 
   // Estados para estadísticas globales
@@ -462,6 +463,7 @@ export default function ServicesPage() {
         </CardHeader>
         <CardContent>
           <PaginatedServiceList
+            key={forceUpdate} // Forzar re-render cuando cambie el estado
             services={services}
             pagination={pagination}
             isLoading={isLoading}

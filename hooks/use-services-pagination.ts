@@ -44,6 +44,7 @@ export interface UseServicesPaginationReturn {
   nextPage: () => void
   prevPage: () => void
   clearFilters: () => void
+  forceUpdate: number
 }
 
 /**
@@ -67,6 +68,7 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
+  const [forceUpdate, setForceUpdate] = useState(0)
 
   // Función para construir la URL con parámetros
   const buildUrl = useCallback((page: number, search: string, category: string, status: string) => {
@@ -178,26 +180,37 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
   const addService = useCallback((newService: Service) => {
     console.log("➕ Agregando servicio instantáneamente:", newService.name)
     
+    // Forzar re-render con nueva referencia
     setServices(prevServices => {
       const updated = [newService, ...prevServices]
       console.log(`📊 Total servicios: ${updated.length}`)
+      console.log(`📋 Servicios actuales:`, updated.map(s => s.name))
       return updated
     })
     
     setPagination(prevPagination => ({
       ...prevPagination,
-      total: prevPagination.total + 1
+      total: prevPagination.total + 1,
+      totalPages: Math.ceil((prevPagination.total + 1) / prevPagination.limit)
     }))
+    
+    // Forzar re-render del componente
+    setForceUpdate(prev => prev + 1)
   }, [])
 
   const updateService = useCallback((updatedService: Service) => {
     console.log("🔄 Actualizando servicio:", updatedService.name)
     
-    setServices(prevServices => 
-      prevServices.map(service => 
+    setServices(prevServices => {
+      const updated = prevServices.map(service => 
         service.id === updatedService.id ? updatedService : service
       )
-    )
+      console.log(`📋 Servicios después de actualizar:`, updated.map(s => s.name))
+      return updated
+    })
+    
+    // Forzar re-render del componente
+    setForceUpdate(prev => prev + 1)
   }, [])
 
   const removeService = useCallback((serviceId: string) => {
@@ -206,13 +219,18 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
     setServices(prevServices => {
       const updated = prevServices.filter(service => service.id !== serviceId)
       console.log(`📊 Servicios restantes: ${updated.length}`)
+      console.log(`📋 Servicios restantes:`, updated.map(s => s.name))
       return updated
     })
     
     setPagination(prevPagination => ({
       ...prevPagination,
-      total: Math.max(0, prevPagination.total - 1)
+      total: Math.max(0, prevPagination.total - 1),
+      totalPages: Math.ceil(Math.max(0, prevPagination.total - 1) / prevPagination.limit)
     }))
+    
+    // Forzar re-render del componente
+    setForceUpdate(prev => prev + 1)
   }, [])
 
   return {
@@ -235,6 +253,7 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
     goToPage,
     nextPage,
     prevPage,
-    clearFilters
+    clearFilters,
+    forceUpdate
   }
 }
