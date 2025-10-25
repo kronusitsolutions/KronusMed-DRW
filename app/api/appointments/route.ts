@@ -183,6 +183,12 @@ export async function POST(request: NextRequest) {
     const { patientId, doctorId, doctorProfileId, serviceId, ...appointmentData } = validatedData;
     console.log("Datos para crear cita:", { patientId, doctorId, doctorProfileId, serviceId, appointmentData })
     
+    // Determinar qué tipo de doctor se está usando
+    const isDoctorProfile = !!doctorProfileId;
+    const doctorIdToUse = isDoctorProfile ? doctorProfileId : doctorId;
+    
+    console.log("Tipo de doctor:", isDoctorProfile ? "doctorProfile" : "user", "ID:", doctorIdToUse);
+    
     const appointment = await prisma.appointment.create({
       data: {
         date: new Date(validatedData.date),
@@ -190,8 +196,10 @@ export async function POST(request: NextRequest) {
         notes: appointmentData.notes,
         status: appointmentData.status,
         patient: { connect: { id: patientId } },
-        ...(doctorId && { doctor: { connect: { id: doctorId } } }),
-        ...(doctorProfileId && { doctorProfile: { connect: { id: doctorProfileId } } }),
+        ...(isDoctorProfile ? 
+          { doctorProfile: { connect: { id: doctorIdToUse } } } : 
+          { doctor: { connect: { id: doctorIdToUse } } }
+        ),
         ...(serviceId && serviceId !== "none" && serviceId !== "" && { service: { connect: { id: serviceId } } })
       },
       include: {

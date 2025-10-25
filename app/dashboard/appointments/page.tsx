@@ -343,7 +343,16 @@ export default function AppointmentsPage() {
   const handleEdit = (appointment: any) => {
     setSelectedAppointment(appointment)
     setValueEdit("patientId", appointment.patientId)
-    setValueEdit("doctorId", appointment.doctorId)
+    
+    // Manejar correctamente los doctores (legacy vs virtual)
+    if (appointment.doctorId) {
+      setValueEdit("doctorId", appointment.doctorId)
+      setValueEdit("doctorProfileId", undefined)
+    } else if (appointment.doctorProfileId) {
+      setValueEdit("doctorProfileId", appointment.doctorProfileId)
+      setValueEdit("doctorId", undefined)
+    }
+    
     setValueEdit("serviceId", appointment.serviceId || "none")
     setValueEdit("date", appointment.date.split('T')[0])
     setValueEdit("reason", appointment.reason)
@@ -620,11 +629,12 @@ export default function AppointmentsPage() {
                             if (type === "user") {
                               setValue("doctorId", id)
                               setValue("doctorProfileId", undefined)
+                              field.onChange(id) // Enviar solo el ID, no el prefijo
                             } else {
                               setValue("doctorProfileId", id)
                               setValue("doctorId", undefined)
+                              field.onChange(undefined) // Limpiar doctorId para doctores virtuales
                             }
-                            field.onChange(value)
                           }} 
                           value={field.value}
                         >
@@ -1120,14 +1130,33 @@ export default function AppointmentsPage() {
                     name="doctorId"
                     control={controlEdit}
                     render={({ field }) => (
-                      <Select onValueChange={field.onChange} value={field.value || undefined}>
+                      <Select 
+                        onValueChange={(value) => {
+                          const [type, id] = value.split(":")
+                          if (type === "user") {
+                            setValueEdit("doctorId", id)
+                            setValueEdit("doctorProfileId", undefined)
+                            field.onChange(id)
+                          } else {
+                            setValueEdit("doctorProfileId", id)
+                            setValueEdit("doctorId", undefined)
+                            field.onChange(undefined)
+                          }
+                        }} 
+                        value={field.value}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecciona un doctor" />
                         </SelectTrigger>
                         <SelectContent>
                           {doctors.map((doctor) => (
-                            <SelectItem key={doctor.id} value={doctor.id}>
+                            <SelectItem 
+                              key={`${doctor.type}:${doctor.id}`} 
+                              value={`${doctor.type}:${doctor.id}`}
+                            >
                               {doctor.name}
+                              {doctor.specialization && ` - ${doctor.specialization}`}
+                              {doctor.type === "user" && " (Con cuenta)"}
                             </SelectItem>
                           ))}
                         </SelectContent>
