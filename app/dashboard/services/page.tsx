@@ -104,9 +104,9 @@ export default function ServicesPage() {
     statusFilter,
     setStatusFilter,
     refetch,
-    refetchAndGoToFirstPage,
-    forceRefresh,
-    renderKey
+    addService,
+    updateService,
+    removeService
   } = useServicesPagination(20)
 
   // Estados para estadísticas globales
@@ -177,29 +177,18 @@ export default function ServicesPage() {
 
       if (response.ok) {
         const createdService = await response.json()
-        console.log("✅ Servicio creado:", createdService.name)
+        console.log("✅ Servicio creado en servidor:", createdService.name)
+        
+        // AGREGAR INMEDIATAMENTE A LA LISTA
+        addService(createdService)
+        console.log("✅ Servicio agregado instantáneamente a la lista")
         
         toast.success("Servicio creado exitosamente")
         setIsAddDialogOpen(false)
         reset()
         
-        // Recarga forzada inmediata
-        console.log("🔄 Recarga forzada inmediata...")
-        await forceRefresh()
+        // Actualizar estadísticas
         await fetchGlobalStats()
-        
-        // Recarga adicional con delay para asegurar sincronización
-        setTimeout(async () => {
-          console.log("🔄 Recarga de verificación...")
-          await forceRefresh()
-        }, 1500)
-        
-        // Recarga final para garantizar consistencia
-        setTimeout(async () => {
-          console.log("🔄 Recarga final...")
-          await forceRefresh()
-          await fetchGlobalStats()
-        }, 3000)
         
       } else {
         const errorData = await response.json()
@@ -235,21 +224,21 @@ export default function ServicesPage() {
       })
 
       if (response.ok) {
+        const updatedService = await response.json()
+        console.log("✅ Servicio actualizado en servidor:", updatedService.name)
+        
+        // ACTUALIZAR INMEDIATAMENTE EN LA LISTA
+        updateService(updatedService)
+        console.log("✅ Servicio actualizado instantáneamente en la lista")
+        
         toast.success("Servicio actualizado exitosamente")
         setIsEditDialogOpen(false)
         setSelectedService(null)
         reset()
         
-        // Actualizar la lista de servicios inmediatamente
-        await refetch()
-        
-        // Actualizar estadísticas globales
+        // Actualizar estadísticas
         await fetchGlobalStats()
         
-        // Forzar una segunda actualización después de un breve delay
-        setTimeout(async () => {
-          await refetch()
-        }, 500)
       } else {
         const errorData = await response.json()
         toast.error(errorData.error || "Error al actualizar el servicio")
@@ -268,18 +257,17 @@ export default function ServicesPage() {
       })
 
       if (response.ok) {
+        console.log("✅ Servicio eliminado en servidor:", service.name)
+        
+        // ELIMINAR INMEDIATAMENTE DE LA LISTA
+        removeService(service.id)
+        console.log("✅ Servicio eliminado instantáneamente de la lista")
+        
         toast.success("Servicio eliminado exitosamente")
         
-        // Actualizar la lista de servicios inmediatamente
-        await refetch()
-        
-        // Actualizar estadísticas globales
+        // Actualizar estadísticas
         await fetchGlobalStats()
         
-        // Forzar una segunda actualización después de un breve delay
-        setTimeout(async () => {
-          await refetch()
-        }, 500)
       } else {
         const errorData = await response.json()
         toast.error(errorData.error || "Error al eliminar el servicio")
@@ -363,7 +351,7 @@ export default function ServicesPage() {
             variant="outline"
             onClick={async () => {
               console.log("🔄 Recarga manual iniciada")
-              await forceRefresh()
+              await refetch()
               await fetchGlobalStats()
               console.log("✅ Recarga manual completada")
             }}
@@ -474,7 +462,6 @@ export default function ServicesPage() {
         </CardHeader>
         <CardContent>
           <PaginatedServiceList
-            key={renderKey} // Forzar re-render cuando cambie
             services={services}
             pagination={pagination}
             isLoading={isLoading}

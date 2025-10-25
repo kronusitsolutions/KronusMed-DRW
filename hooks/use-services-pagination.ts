@@ -37,18 +37,17 @@ export interface UseServicesPaginationReturn {
   currentPage: number
   setCurrentPage: (page: number) => void
   refetch: () => Promise<void>
-  refetchAndGoToFirstPage: () => Promise<void>
-  forceRefresh: () => Promise<void>
+  addService: (service: Service) => void
+  updateService: (service: Service) => void
+  removeService: (serviceId: string) => void
   goToPage: (page: number) => void
   nextPage: () => void
   prevPage: () => void
   clearFilters: () => void
-  renderKey: number
 }
 
 /**
- * Hook personalizado para manejar paginación de servicios con búsqueda
- * Optimizado para producción con consultas eficientes al backend
+ * Hook simplificado para gestión de servicios con actualizaciones instantáneas
  */
 export function useServicesPagination(initialLimit: number = 20): UseServicesPaginationReturn {
   const [services, setServices] = useState<Service[]>([])
@@ -62,7 +61,6 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
     nextPage: null,
     prevPage: null
   })
-  const [renderKey, setRenderKey] = useState(0) // Para forzar re-render
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -99,7 +97,7 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
       setError(null)
       
       const url = buildUrl(page, search, category, status)
-      console.log(`Cargando servicios: ${url}`)
+      console.log(`🔄 Cargando servicios: ${url}`)
       
       const response = await fetch(url)
       
@@ -109,12 +107,12 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
       
       const data = await response.json()
       
-      // Validar estructura de respuesta
       if (!data.services || !Array.isArray(data.services) || !data.pagination) {
         throw new Error("Formato de respuesta inválido")
       }
       
-      console.log(`Servicios cargados: ${data.services.length} de ${data.pagination.total}`)
+      console.log(`✅ Servicios cargados: ${data.services.length} de ${data.pagination.total}`)
+      console.log(`📋 Servicios:`, data.services.map(s => s.name))
       
       setServices(data.services)
       setPagination(data.pagination)
@@ -125,35 +123,25 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
       console.error("Error al cargar servicios:", errorMessage)
       setError(errorMessage)
       setServices([])
-      setPagination({
-        page: 1,
-        limit: initialLimit,
-        total: 0,
-        totalPages: 0,
-        hasNext: false,
-        hasPrev: false,
-        nextPage: null,
-        prevPage: null
-      })
     } finally {
       setIsLoading(false)
     }
-  }, [buildUrl, initialLimit])
+  }, [buildUrl])
 
-  // Carga inicial de servicios
+  // Carga inicial
   useEffect(() => {
     console.log("🔄 Carga inicial de servicios")
     fetchServices(1, searchTerm, categoryFilter, statusFilter)
-  }, []) // Solo al montar el componente
+  }, []) // Solo al montar
 
   // Debounce para búsqueda
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       fetchServices(1, searchTerm, categoryFilter, statusFilter)
-    }, 300) // Debounce de 300ms
+    }, 300)
 
     return () => clearTimeout(timeoutId)
-  }, [searchTerm, categoryFilter, statusFilter]) // Solo cuando cambien los filtros
+  }, [searchTerm, categoryFilter, statusFilter])
 
   // Funciones de navegación
   const goToPage = useCallback((page: number) => {
@@ -182,150 +170,50 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
   }, [])
 
   // Función de recarga
-  const refetch = useCallback(async () => {
-    // Forzar recarga inmediata sin debounce y sin caché
-    setIsLoading(true)
-    setError(null)
-    
-    try {
-      const url = buildUrl(currentPage, searchTerm, categoryFilter, statusFilter)
-      console.log(`Refrescando servicios (sin caché): ${url}`)
-      
-      // Forzar recarga sin caché agregando timestamp
-      const urlWithTimestamp = `${url}&_t=${Date.now()}`
-      
-      const response = await fetch(urlWithTimestamp, {
-        method: 'GET',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
-      })
-      
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      
-      // Validar estructura de respuesta
-      if (!data.services || !Array.isArray(data.services) || !data.pagination) {
-        throw new Error("Formato de respuesta inválido")
-      }
-      
-      console.log(`Servicios refrescados (sin caché): ${data.services.length} de ${data.pagination.total}`)
-      
-      setServices(data.services)
-      setPagination(data.pagination)
-      
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error desconocido al refrescar servicios'
-      console.error("Error al refrescar servicios:", errorMessage)
-      setError(errorMessage)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [buildUrl, currentPage, searchTerm, categoryFilter, statusFilter])
+  const refetch = useCallback(() => {
+    return fetchServices(currentPage, searchTerm, categoryFilter, statusFilter)
+  }, [fetchServices, currentPage, searchTerm, categoryFilter, statusFilter])
 
-  // Función para refrescar y ir a la primera página (útil después de crear un servicio)
-  const refetchAndGoToFirstPage = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
-    setCurrentPage(1)
+  // FUNCIONES PARA ACTUALIZACIONES INSTANTÁNEAS
+  const addService = useCallback((newService: Service) => {
+    console.log("➕ Agregando servicio instantáneamente:", newService.name)
     
-    try {
-      const url = buildUrl(1, searchTerm, categoryFilter, statusFilter)
-      console.log(`Refrescando servicios y yendo a página 1 (sin caché): ${url}`)
-      
-      // Forzar recarga sin caché agregando timestamp
-      const urlWithTimestamp = `${url}&_t=${Date.now()}`
-      
-      const response = await fetch(urlWithTimestamp, {
-        method: 'GET',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
-      })
-      
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      
-      // Validar estructura de respuesta
-      if (!data.services || !Array.isArray(data.services) || !data.pagination) {
-        throw new Error("Formato de respuesta inválido")
-      }
-      
-      console.log(`✅ Servicios refrescados (página 1, sin caché): ${data.services.length} de ${data.pagination.total}`)
-      console.log(`📋 Servicios recibidos:`, data.services.map(s => s.name))
-      
-      setServices(data.services)
-      setPagination(data.pagination)
-      setCurrentPage(1)
-      setRenderKey(prev => prev + 1) // Forzar re-render
-      
-      console.log(`📊 Estado actualizado - Servicios: ${data.services.length}, Total: ${data.pagination.total}`)
-      
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error desconocido al refrescar servicios'
-      console.error("Error al refrescar servicios:", errorMessage)
-      setError(errorMessage)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [buildUrl, searchTerm, categoryFilter, statusFilter])
+    setServices(prevServices => {
+      const updated = [newService, ...prevServices]
+      console.log(`📊 Total servicios: ${updated.length}`)
+      return updated
+    })
+    
+    setPagination(prevPagination => ({
+      ...prevPagination,
+      total: prevPagination.total + 1
+    }))
+  }, [])
 
-  // Función para forzar recarga completa
-  const forceRefresh = useCallback(async () => {
-    console.log("🔄 Forzando recarga completa...")
-    setIsLoading(true)
-    setError(null)
+  const updateService = useCallback((updatedService: Service) => {
+    console.log("🔄 Actualizando servicio:", updatedService.name)
     
-    try {
-      // Limpiar caché del navegador forzando timestamp único
-      const timestamp = Date.now()
-      const url = `/api/services?page=1&limit=${initialLimit}&_t=${timestamp}`
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
-      })
-      
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      
-      if (!data.services || !Array.isArray(data.services) || !data.pagination) {
-        throw new Error("Formato de respuesta inválido")
-      }
-      
-      console.log(`✅ Recarga forzada: ${data.services.length} servicios`)
-      console.log(`📋 Servicios:`, data.services.map(s => s.name))
-      
-      setServices(data.services)
-      setPagination(data.pagination)
-      setCurrentPage(1)
-      setRenderKey(prev => prev + 1)
-      
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error al forzar recarga'
-      console.error("Error al forzar recarga:", errorMessage)
-      setError(errorMessage)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [initialLimit])
+    setServices(prevServices => 
+      prevServices.map(service => 
+        service.id === updatedService.id ? updatedService : service
+      )
+    )
+  }, [])
+
+  const removeService = useCallback((serviceId: string) => {
+    console.log("🗑️ Eliminando servicio:", serviceId)
+    
+    setServices(prevServices => {
+      const updated = prevServices.filter(service => service.id !== serviceId)
+      console.log(`📊 Servicios restantes: ${updated.length}`)
+      return updated
+    })
+    
+    setPagination(prevPagination => ({
+      ...prevPagination,
+      total: Math.max(0, prevPagination.total - 1)
+    }))
+  }, [])
 
   return {
     services,
@@ -341,12 +229,12 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
     currentPage,
     setCurrentPage,
     refetch,
-    refetchAndGoToFirstPage,
-    forceRefresh,
+    addService,
+    updateService,
+    removeService,
     goToPage,
     nextPage,
     prevPage,
-    clearFilters,
-    renderKey
+    clearFilters
   }
 }
