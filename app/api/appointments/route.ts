@@ -183,8 +183,7 @@ export async function POST(request: NextRequest) {
     const { patientId, doctorId, doctorProfileId, serviceId, ...appointmentData } = validatedData;
     console.log("Datos para crear cita:", { patientId, doctorId, doctorProfileId, serviceId, appointmentData })
     
-    // Determinar qué tipo de doctor se está usando
-    const isDoctorProfile = !!doctorProfileId;
+    // Usar la variable isDoctorProfile ya declarada arriba
     const doctorIdToUse = isDoctorProfile ? doctorProfileId : doctorId;
     
     console.log("Tipo de doctor:", isDoctorProfile ? "doctorProfile" : "user", "ID:", doctorIdToUse);
