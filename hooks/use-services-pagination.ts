@@ -44,6 +44,7 @@ export interface UseServicesPaginationReturn {
   nextPage: () => void
   prevPage: () => void
   clearFilters: () => void
+  renderKey: number
 }
 
 /**
@@ -62,6 +63,7 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
     nextPage: null,
     prevPage: null
   })
+  const [renderKey, setRenderKey] = useState(0) // Para forzar re-render
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -266,6 +268,7 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
       setServices(data.services)
       setPagination(data.pagination)
       setCurrentPage(1)
+      setRenderKey(prev => prev + 1) // Forzar re-render
       
       console.log(`📊 Estado actualizado - Servicios: ${data.services.length}, Total: ${data.pagination.total}`)
       
@@ -298,6 +301,9 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
       console.log(`📊 Total actualizado: ${updated.total}`)
       return updated
     })
+    
+    // Forzar re-render
+    setRenderKey(prev => prev + 1)
   }, [])
 
   // Función para remover actualización optimista (en caso de error)
@@ -335,6 +341,7 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
     goToPage,
     nextPage,
     prevPage,
-    clearFilters
+    clearFilters,
+    renderKey
   }
 }

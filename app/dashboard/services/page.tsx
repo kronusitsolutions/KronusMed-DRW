@@ -106,7 +106,8 @@ export default function ServicesPage() {
     refetch,
     refetchAndGoToFirstPage,
     addOptimisticService,
-    removeOptimisticService
+    removeOptimisticService,
+    renderKey
   } = useServicesPagination(20)
 
   // Estados para estadísticas globales
@@ -499,6 +500,7 @@ export default function ServicesPage() {
         </CardHeader>
         <CardContent>
           <PaginatedServiceList
+            key={renderKey} // Forzar re-render cuando cambie
             services={services}
             pagination={pagination}
             isLoading={isLoading}
