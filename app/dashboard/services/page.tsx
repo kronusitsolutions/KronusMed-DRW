@@ -103,7 +103,8 @@ export default function ServicesPage() {
     setCategoryFilter,
     statusFilter,
     setStatusFilter,
-    refetch
+    refetch,
+    refetchAndGoToFirstPage
   } = useServicesPagination(20)
 
   // Estados para estadísticas globales
@@ -174,13 +175,25 @@ export default function ServicesPage() {
         toast.success("Servicio creado exitosamente")
         setIsAddDialogOpen(false)
         reset()
-        await refetch()
+        
+        // Actualizar la lista de servicios y ir a la primera página
+        // para mostrar el servicio recién creado
+        await refetchAndGoToFirstPage()
+        
+        // Actualizar estadísticas globales
         await fetchGlobalStats()
+        
+        // Forzar una segunda actualización después de un breve delay
+        // para asegurar que el caché se haya invalidado
+        setTimeout(async () => {
+          await refetchAndGoToFirstPage()
+        }, 500)
       } else {
         const errorData = await response.json()
         toast.error(errorData.error || "Error al crear el servicio")
       }
     } catch (error) {
+      console.error("Error al crear servicio:", error)
       toast.error("Error al crear el servicio")
     }
   }
@@ -213,13 +226,23 @@ export default function ServicesPage() {
         setIsEditDialogOpen(false)
         setSelectedService(null)
         reset()
+        
+        // Actualizar la lista de servicios inmediatamente
         await refetch()
+        
+        // Actualizar estadísticas globales
         await fetchGlobalStats()
+        
+        // Forzar una segunda actualización después de un breve delay
+        setTimeout(async () => {
+          await refetch()
+        }, 500)
       } else {
         const errorData = await response.json()
         toast.error(errorData.error || "Error al actualizar el servicio")
       }
     } catch (error) {
+      console.error("Error al actualizar servicio:", error)
       toast.error("Error al actualizar el servicio")
     }
   }
@@ -233,13 +256,23 @@ export default function ServicesPage() {
 
       if (response.ok) {
         toast.success("Servicio eliminado exitosamente")
+        
+        // Actualizar la lista de servicios inmediatamente
         await refetch()
+        
+        // Actualizar estadísticas globales
         await fetchGlobalStats()
+        
+        // Forzar una segunda actualización después de un breve delay
+        setTimeout(async () => {
+          await refetch()
+        }, 500)
       } else {
         const errorData = await response.json()
         toast.error(errorData.error || "Error al eliminar el servicio")
       }
     } catch (error) {
+      console.error("Error al eliminar servicio:", error)
       toast.error("Error al eliminar el servicio")
     } finally {
       setIsDeleting(false)

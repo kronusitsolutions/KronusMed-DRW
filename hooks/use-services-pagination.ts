@@ -37,6 +37,7 @@ export interface UseServicesPaginationReturn {
   currentPage: number
   setCurrentPage: (page: number) => void
   refetch: () => Promise<void>
+  refetchAndGoToFirstPage: () => Promise<void>
   goToPage: (page: number) => void
   nextPage: () => void
   prevPage: () => void
@@ -172,9 +173,79 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
   }, [])
 
   // Función de recarga
-  const refetch = useCallback(() => {
-    return fetchServices(currentPage, searchTerm, categoryFilter, statusFilter)
-  }, [fetchServices, currentPage, searchTerm, categoryFilter, statusFilter])
+  const refetch = useCallback(async () => {
+    // Forzar recarga inmediata sin debounce
+    setIsLoading(true)
+    setError(null)
+    
+    try {
+      const url = buildUrl(currentPage, searchTerm, categoryFilter, statusFilter)
+      console.log(`Refrescando servicios: ${url}`)
+      
+      const response = await fetch(url)
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      
+      // Validar estructura de respuesta
+      if (!data.services || !Array.isArray(data.services) || !data.pagination) {
+        throw new Error("Formato de respuesta inválido")
+      }
+      
+      console.log(`Servicios refrescados: ${data.services.length} de ${data.pagination.total}`)
+      
+      setServices(data.services)
+      setPagination(data.pagination)
+      
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error desconocido al refrescar servicios'
+      console.error("Error al refrescar servicios:", errorMessage)
+      setError(errorMessage)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [buildUrl, currentPage, searchTerm, categoryFilter, statusFilter])
+
+  // Función para refrescar y ir a la primera página (útil después de crear un servicio)
+  const refetchAndGoToFirstPage = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+    setCurrentPage(1)
+    
+    try {
+      const url = buildUrl(1, searchTerm, categoryFilter, statusFilter)
+      console.log(`Refrescando servicios y yendo a página 1: ${url}`)
+      
+      const response = await fetch(url)
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      
+      // Validar estructura de respuesta
+      if (!data.services || !Array.isArray(data.services) || !data.pagination) {
+        throw new Error("Formato de respuesta inválido")
+      }
+      
+      console.log(`Servicios refrescados (página 1): ${data.services.length} de ${data.pagination.total}`)
+      
+      setServices(data.services)
+      setPagination(data.pagination)
+      setCurrentPage(1)
+      
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error desconocido al refrescar servicios'
+      console.error("Error al refrescar servicios:", errorMessage)
+      setError(errorMessage)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [buildUrl, searchTerm, categoryFilter, statusFilter])
 
   return {
     services,
@@ -190,6 +261,7 @@ export function useServicesPagination(initialLimit: number = 20): UseServicesPag
     currentPage,
     setCurrentPage,
     refetch,
+    refetchAndGoToFirstPage,
     goToPage,
     nextPage,
     prevPage,
